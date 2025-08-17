@@ -1,6 +1,10 @@
+// Node Model.swift
+import Foundation
+import CoreGraphics
+
 // MARK: - Node Model
 struct Node: Identifiable, Codable, Hashable {
-    var id = UUID()
+    let id: UUID  // Changed from var to let
     var recipeID: String
     var x: CGFloat
     var y: CGFloat
@@ -9,7 +13,8 @@ struct Node: Identifiable, Codable, Hashable {
     var selectedMachineTierID: String?
     var modules: [Module?] = []
     
-    init(recipeID: String, x: CGFloat, y: CGFloat, targetPerMin: Double? = nil, speedMultiplier: Double? = nil) {
+    init(id: UUID = UUID(), recipeID: String, x: CGFloat, y: CGFloat, targetPerMin: Double? = nil, speedMultiplier: Double? = nil) {
+        self.id = id  // Now properly initialized
         self.recipeID = recipeID
         self.x = x
         self.y = y

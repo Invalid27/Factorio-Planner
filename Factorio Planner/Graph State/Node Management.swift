@@ -34,12 +34,18 @@ extension GraphState {
         let offset: CGFloat = 50
         
         for nodeID in selectedNodeIDs {
-            guard var node = nodes[nodeID] else { continue }
-            node.id = UUID()
-            node.x += offset
-            node.y += offset
-            newNodes.append(node)
-            nodes[node.id] = node
+            guard let node = nodes[nodeID] else { continue }
+            // Create new node with new ID
+            let newNode = Node(
+                id: UUID(),  // New ID
+                recipeID: node.recipeID,
+                x: node.x + offset,
+                y: node.y + offset,
+                targetPerMin: node.targetPerMin,
+                speedMultiplier: node.speedMultiplier
+            )
+            newNodes.append(newNode)
+            nodes[newNode.id] = newNode
         }
         
         // Update selection to new nodes

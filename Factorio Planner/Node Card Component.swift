@@ -260,31 +260,32 @@ struct NodeCard: View {
     }
     
     private func duplicateNode() {
-        var newNode = node
-        newNode.id = UUID()
-        newNode.x += 50
-        newNode.y += 50
+        let newNode = Node(
+            id: UUID(),  // New ID
+            recipeID: node.recipeID,
+            x: node.x + 50,
+            y: node.y + 50,
+            targetPerMin: node.targetPerMin,
+            speedMultiplier: node.speedMultiplier
+        )
         graph.nodes[newNode.id] = newNode
         graph.selectedNodeIDs = [newNode.id]
     }
-    
-    private func addModule(_ module: Module) {
-        guard var updatedNode = graph.nodes[node.id] else { return }
+
+    // Also update the createConnectedNode function:
+    private func createConnectedNode(recipe: Recipe, item: String, asConsumer: Bool) {
+        let offset: CGFloat = 200
+        let newX = asConsumer ? node.x + offset : node.x - offset
+        let newY = node.y
         
-        // Initialize modules array if needed
-        if updatedNode.modules.isEmpty {
-            let slots = getMaxModuleSlots()
-            updatedNode.modules = Array(repeating: nil, count: slots)
+        let newNode = graph.addNode(recipeID: recipe.id, at: CGPoint(x: newX, y: newY))
+        
+        if asConsumer {
+            graph.addEdge(from: node.id, to: newNode.id, item: item)
+        } else {
+            graph.addEdge(from: newNode.id, to: node.id, item: item)
         }
         
-        // Find first empty slot
-        if let emptyIndex = updatedNode.modules.firstIndex(where: { $0 == nil }) {
-            updatedNode.modules[emptyIndex] = module
-        } else if updatedNode.modules.count < getMaxModuleSlots() {
-            updatedNode.modules.append(module)
-        }
-        
-        graph.nodes[node.id] = updatedNode
         graph.computeFlows()
     }
     

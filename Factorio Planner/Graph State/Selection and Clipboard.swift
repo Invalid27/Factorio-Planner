@@ -71,15 +71,20 @@ extension GraphState {
         var newNodeIDs: Set<UUID> = []
         var oldToNewIDMap: [UUID: UUID] = [:]
         
-        for var node in clipboard {
+        for node in clipboard {
             let oldID = node.id
-            node.id = UUID()
-            node.x += offsetX
-            node.y += offsetY
+            let newNode = Node(
+                id: UUID(),  // New ID
+                recipeID: node.recipeID,
+                x: node.x + offsetX,
+                y: node.y + offsetY,
+                targetPerMin: node.targetPerMin,
+                speedMultiplier: node.speedMultiplier
+            )
             
-            nodes[node.id] = node
-            newNodeIDs.insert(node.id)
-            oldToNewIDMap[oldID] = node.id
+            nodes[newNode.id] = newNode
+            newNodeIDs.insert(newNode.id)
+            oldToNewIDMap[oldID] = newNode.id
         }
         
         // Copy edges between pasted nodes
