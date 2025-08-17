@@ -1,0 +1,2323 @@
+import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
+
+// MARK: - Constants
+private enum Constants {
+    static let gridSpacing: CGFloat = 50
+    static let dotSize: CGFloat = 1.2
+    static let portSize: CGFloat = 14
+    static let iconSize: CGFloat = 22
+    static let nodeMinWidth: CGFloat = 190
+    static let nodeMaxWidth: CGFloat = 210
+    static let wireLineWidth: CGFloat = 2.0
+    static let curveTension: CGFloat = 40
+    static let minSpeed: Double = 0.1
+    static let computationTolerance: Double = 1e-6
+}
+
+// MARK: - Port Components
+struct PortRow: View {
+    @EnvironmentObject var graph: GraphState
+    var nodeID: UUID
+    var side: IOSide
+    var item: String
+    var amount: Double
+    
+    @State private var centerInCanvas: CGPoint = .zero
+    
+    private var flowRate: Double {
+        guard let node = graph.nodes[nodeID],
+              let targetPerMin = node.targetPerMin,
+              let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return 0
+        }
+        
+        if side == .output {
+            let totalOutput = recipe.outputs.values.reduce(0, +)
+            let actualOutput = totalOutput * (1 + node.totalProductivityBonus)
+            let thisOutputRatio = amount / totalOutput
+            return targetPerMin * thisOutputRatio * (1 + node.totalProductivityBonus)
+        } else {
+            let outputAmount = recipe.outputs.values.first ?? 1
+            let actualOutput = outputAmount * (1 + node.totalProductivityBonus)
+            let craftsPerMin = targetPerMin / actualOutput
+            return craftsPerMin * amount
+        }
+    }
+    
+    private var flowRateText: String {
+        if flowRate == 0 {
+            return "×\(amount.formatted())"
+        } else if flowRate == floor(flowRate) {
+            return String(format: "%.0f", flowRate)
+        } else {
+            return String(format: "%.1f", flowRate)
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            if side == .input {
+                HStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        IconOrMonogram(item: item, size: 16)
+                            .hoverTooltip(item)
+                        
+                        Text(flowRateText)
+                            .foregroundStyle(flowRate > 0 ? .primary : .secondary)
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .frame(minWidth: 0)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isPortConnected(nodeID: nodeID, item: item, side: .input, edges: graph.edges)
+                                  ? Color.clear
+                                  : Color.orange.opacity(0.3))
+                            .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: .input, edges: graph.edges))
+                    )
+                    .background(
+                        GeometryReader { geometry in
+                            let frame = geometry.frame(in: .named("canvas"))
+                            Color.clear
+                                .onAppear {
+                                    centerInCanvas = CGPoint(x: frame.midX, y: frame.midY)
+                                }
+                                .onChange(of: frame) { _, newFrame in
+                                    centerInCanvas = CGPoint(x: newFrame.midX, y: newFrame.midY)
+                                }
+                                .preference(
+                                    key: PortFramesKey.self,
+                                    value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side), frame: frame)]
+                                )
+                        }
+                    )
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                handleDragChanged(value)
+                            }
+                            .onEnded { _ in
+                                handleDragEnd()
+                            }
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        Text(flowRateText)
+                            .foregroundStyle(flowRate > 0 ? .primary : .secondary)
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
+                        
+                        IconOrMonogram(item: item, size: 16)
+                            .hoverTooltip(item)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .frame(minWidth: 0)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isPortConnected(nodeID: nodeID, item: item, side: .output, edges: graph.edges)
+                                  ? Color.clear
+                                  : Color.orange.opacity(0.3))
+                            .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: .output, edges: graph.edges))
+                    )
+                    .background(
+                        GeometryReader { geometry in
+                            let frame = geometry.frame(in: .named("canvas"))
+                            Color.clear
+                                .onAppear {
+                                    centerInCanvas = CGPoint(x: frame.midX, y: frame.midY)
+                                }
+                                .onChange(of: frame) { _, newFrame in
+                                    centerInCanvas = CGPoint(x: newFrame.midX, y: newFrame.midY)
+                                }
+                                .preference(
+                                    key: PortFramesKey.self,
+                                    value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side), frame: frame)]
+                                )
+                        }
+                    )
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                handleDragChanged(value)
+                            }
+                            .onEnded { _ in
+                                handleDragEnd()
+                            }
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+    
+    private func handleDragChanged(_ value: DragGesture.Value) {
+        let startPoint = centerInCanvas
+        let currentPoint = CGPoint(
+            x: startPoint.x + value.translation.width,
+            y: startPoint.y + value.translation.height
+        )
+        
+        if graph.dragging == nil {
+            graph.dragging = DragContext(
+                fromPort: PortKey(nodeID: nodeID, item: item, side: side),
+                startPoint: startPoint,
+                currentPoint: currentPoint
+            )
+        } else {
+            graph.dragging?.currentPoint = currentPoint
+        }
+    }
+    
+    private func handleDragEnd() {
+        guard let dragContext = graph.dragging else { return }
+        
+        let currentPoint = dragContext.currentPoint
+        let oppositeSide = side.opposite
+        
+        let hitPort = graph.portFrames.first { portKey, rect in
+            portKey.item == item &&
+            portKey.side == oppositeSide &&
+            rect.insetBy(dx: -8, dy: -8).contains(currentPoint)
+        }?.key
+        
+        if let targetPort = hitPort {
+            if side == .output {
+                graph.addEdge(from: nodeID, to: targetPort.nodeID, item: item)
+            } else {
+                graph.addEdge(from: targetPort.nodeID, to: nodeID, item: item)
+            }
+        } else {
+            graph.pickerContext = PickerContext(
+                fromPort: PortKey(nodeID: nodeID, item: item, side: side),
+                dropPoint: currentPoint
+            )
+            graph.showPicker = true
+        }
+        
+        graph.dragging = nil
+    }
+}
+
+// MARK: - Icon Components
+struct IconOrMonogram: View {
+    var item: String
+    var size: CGFloat = Constants.iconSize
+    
+    var body: some View {
+        Group {
+            if let assetName = ICON_ASSETS[item] {
+                Image(assetName)
+                    .renderingMode(.original)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                Monogram(item: item, size: size)
+            }
+        }
+        .frame(width: size, height: size)
+        .contentShape(Rectangle())
+    }
+}
+
+struct ItemBadge: View {
+    var item: String
+    
+    var body: some View {
+        IconOrMonogram(item: item, size: Constants.iconSize)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.blue.opacity(0.35))
+            )
+            .frame(width: Constants.iconSize, height: Constants.iconSize)
+    }
+}
+
+struct Monogram: View {
+    var item: String
+    var size: CGFloat = Constants.iconSize
+    
+    var body: some View {
+        let initials = item.split(separator: " ")
+            .compactMap { $0.first }
+            .prefix(2)
+        
+        Text(String(initials))
+            .font(.caption)
+            .bold()
+            .frame(width: size, height: size)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.blue.opacity(0.15))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.blue.opacity(0.35))
+            )
+    }
+}
+
+// MARK: - Tooltip
+extension View {
+    func hoverTooltip(_ text: String) -> some View {
+        modifier(HoverTooltip(text: text))
+    }
+}
+
+struct HoverTooltip: ViewModifier {
+    var text: String
+    @State private var hovering = false
+    
+    func body(content: Content) -> some View {
+        content
+            .onHover { isHovering in
+                hovering = isHovering
+            }
+            .overlay(alignment: .top) {
+                if hovering {
+                    Tooltip(text: text)
+                        .fixedSize(horizontal: true, vertical: true)
+                        .offset(y: -26)
+                        .zIndex(999)
+                        .allowsHitTesting(false)
+                }
+            }
+            .animation(.easeInOut(duration: 0.12), value: hovering)
+    }
+}
+
+struct Tooltip: View {
+    var text: String
+    
+    var body: some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.ultraThinMaterial)
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.white.opacity(0.15))
+            )
+    }
+}
+
+// MARK: - Wire Rendering
+struct WiresLayer: View {
+    @EnvironmentObject var graph: GraphState
+    var portFrames: [PortKey: CGRect]
+    
+    var body: some View {
+        ZStack {
+            Canvas { context, size in
+                for edge in graph.edges {
+                    let outputPortKey = PortKey(nodeID: edge.fromNode, item: edge.item, side: .output)
+                    let inputPortKey = PortKey(nodeID: edge.toNode, item: edge.item, side: .input)
+                    
+                    guard let fromRect = portFrames[outputPortKey],
+                          let toRect = portFrames[inputPortKey] else {
+                        continue
+                    }
+                    
+                    let startPoint = CGPoint(x: fromRect.midX, y: fromRect.midY)
+                    let endPoint = CGPoint(x: toRect.midX, y: toRect.midY)
+                    let path = createCubicPath(from: startPoint, to: endPoint)
+                    
+                    context.stroke(
+                        path,
+                        with: .color(.orange.opacity(0.9)),
+                        lineWidth: Constants.wireLineWidth
+                    )
+                }
+            }
+            .allowsHitTesting(false)
+            
+            ForEach(graph.edges, id: \.id) { edge in
+                WireFlowLabel(edge: edge, portFrames: portFrames)
+            }
+        }
+    }
+}
+
+struct WireFlowLabel: View {
+    @EnvironmentObject var graph: GraphState
+    var edge: Edge
+    var portFrames: [PortKey: CGRect]
+    
+    var body: some View {
+        let outputPortKey = PortKey(nodeID: edge.fromNode, item: edge.item, side: .output)
+        let inputPortKey = PortKey(nodeID: edge.toNode, item: edge.item, side: .input)
+        
+        guard let fromRect = portFrames[outputPortKey],
+              let toRect = portFrames[inputPortKey],
+              let consumerNode = graph.nodes[edge.toNode],
+              let consumerRecipe = RECIPES.first(where: { $0.id == consumerNode.recipeID }),
+              let targetPerMin = consumerNode.targetPerMin,
+              targetPerMin > 0 else {
+            return AnyView(EmptyView())
+        }
+        
+        let outputAmount = consumerRecipe.outputs.values.first ?? 1
+        let actualOutput = outputAmount * (1 + consumerNode.totalProductivityBonus)
+        let craftsPerMin = targetPerMin / actualOutput
+        let inputAmount = consumerRecipe.inputs[edge.item] ?? 0
+        let flowRate = craftsPerMin * inputAmount
+        
+        let startPoint = CGPoint(x: fromRect.midX, y: fromRect.midY)
+        let endPoint = CGPoint(x: toRect.midX, y: toRect.midY)
+        let midPoint = CGPoint(
+            x: (startPoint.x + endPoint.x) / 2,
+            y: (startPoint.y + endPoint.y) / 2
+        )
+        
+        let flowText: String
+        if flowRate == floor(flowRate) {
+            flowText = String(format: "%.0f", flowRate)
+        } else {
+            flowText = String(format: "%.1f", flowRate)
+        }
+        
+        return AnyView(
+            Text(flowText)
+                .font(.body)
+                .fontWeight(.bold)
+                .foregroundStyle(.black)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(.orange.opacity(0.9))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(.orange.opacity(0.6))
+                )
+                .position(midPoint)
+                .allowsHitTesting(false)
+        )
+    }
+}
+
+struct WireTempPath: View {
+    var from: CGPoint
+    var to: CGPoint
+    
+    var body: some View {
+        Canvas { context, size in
+            let path = createCubicPath(from: from, to: to)
+            let dashedPath = path.strokedPath(.init(lineWidth: Constants.wireLineWidth, dash: [6, 6]))
+            
+            context.stroke(
+                dashedPath,
+                with: .color(.blue.opacity(0.8))
+            )
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+func createCubicPath(from startPoint: CGPoint, to endPoint: CGPoint) -> Path {
+    var path = Path()
+    let deltaX = max(abs(endPoint.x - startPoint.x) * 0.5, Constants.curveTension)
+    
+    path.move(to: startPoint)
+    path.addCurve(
+        to: endPoint,
+        control1: CGPoint(x: startPoint.x + deltaX, y: startPoint.y),
+        control2: CGPoint(x: endPoint.x - deltaX, y: endPoint.y)
+    )
+    return path
+}
+
+// MARK: - Recipe Pickers
+struct RecipePicker: View {
+    @EnvironmentObject var graph: GraphState
+    var context: PickerContext
+    @State private var searchText = ""
+    
+    private var availableRecipes: [Recipe] {
+        let recipes = switch context.fromPort.side {
+        case .output:
+            ITEM_TO_CONSUMERS[context.fromPort.item] ?? []
+        case .input:
+            ITEM_TO_PRODUCERS[context.fromPort.item] ?? []
+        }
+        
+        if searchText.isEmpty {
+            return recipes.sorted { $0.name < $1.name }
+        } else {
+            return recipes
+                .filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+                .sorted { $0.name < $1.name }
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(titleText)
+                    .font(.headline)
+                Spacer()
+                Button("Close") {
+                    graph.showPicker = false
+                }
+            }
+            
+            TextField("Search recipes...", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+            
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(availableRecipes, id: \.id) { recipe in
+                        RecipeListRow(recipe: recipe) {
+                            selectRecipe(recipe)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            
+            if availableRecipes.isEmpty {
+                Text("No recipes found")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 480, minHeight: 360)
+    }
+    
+    private var titleText: String {
+        switch context.fromPort.side {
+        case .output:
+            return "What uses '\(context.fromPort.item)'?"
+        case .input:
+            return "How to make '\(context.fromPort.item)'?"
+        }
+    }
+    
+    private func selectRecipe(_ recipe: Recipe) {
+        graph.showPicker = false
+        
+        let nodePosition: CGPoint
+        switch context.fromPort.side {
+        case .output:
+            nodePosition = CGPoint(
+                x: context.dropPoint.x + 140,
+                y: context.dropPoint.y - 60
+            )
+        case .input:
+            nodePosition = CGPoint(
+                x: context.dropPoint.x - 140,
+                y: context.dropPoint.y - 60
+            )
+        }
+        
+        let newNode = graph.addNode(recipeID: recipe.id, at: nodePosition)
+        
+        switch context.fromPort.side {
+        case .output:
+            graph.addEdge(from: context.fromPort.nodeID, to: newNode.id, item: context.fromPort.item)
+        case .input:
+            graph.addEdge(from: newNode.id, to: context.fromPort.nodeID, item: context.fromPort.item)
+        }
+    }
+}
+
+struct GeneralRecipePicker: View {
+    @EnvironmentObject var graph: GraphState
+    @State private var searchText = ""
+    @State private var selectedCategory = "All"
+    
+    private var categories: [String] {
+        let allCategories = Set(RECIPES.map { $0.category })
+        return ["All"] + allCategories.sorted()
+    }
+    
+    private var filteredRecipes: [Recipe] {
+        var recipes = RECIPES
+        
+        if selectedCategory != "All" {
+            recipes = recipes.filter { $0.category == selectedCategory }
+        }
+        
+        if !searchText.isEmpty {
+            recipes = recipes.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        }
+        
+        return recipes.sorted { $0.name < $1.name }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Choose Recipe")
+                    .font(.headline)
+                Spacer()
+                Button("Close") {
+                    graph.showGeneralPicker = false
+                }
+            }
+            
+            HStack(spacing: 12) {
+                Picker("Category", selection: $selectedCategory) {
+                    ForEach(categories, id: \.self) { category in
+                        Text(category).tag(category)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 140)
+                
+                TextField("Search recipes...", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+            }
+            
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(filteredRecipes, id: \.id) { recipe in
+                        RecipeListRow(recipe: recipe) {
+                            selectRecipe(recipe)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            
+            if filteredRecipes.isEmpty {
+                Text("No recipes found")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 520, minHeight: 400)
+    }
+    
+    private func selectRecipe(_ recipe: Recipe) {
+        graph.showGeneralPicker = false
+        graph.addNode(recipeID: recipe.id, at: graph.generalPickerDropPoint)
+    }
+}
+
+struct RecipeListRow: View {
+    var recipe: Recipe
+    var onSelect: () -> Void
+    @State private var isHovered = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(recipe.name)
+                        .font(.system(.body, weight: .medium))
+                    
+                    Text(recipe.category)
+                        .font(.caption)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(4)
+                    
+                    Spacer()
+                    
+                    Text("\(recipe.time, specifier: "%.1f")s")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                
+                HStack(spacing: 16) {
+                    HStack(spacing: 4) {
+                        Text("In:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(recipe.inputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                            HStack(spacing: 2) {
+                                IconOrMonogram(item: item, size: 12)
+                                Text("×\(amount, format: .number)")
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    
+                    HStack(spacing: 4) {
+                        Text("Out:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(recipe.outputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                            HStack(spacing: 2) {
+                                IconOrMonogram(item: item, size: 12)
+                                Text("×\(amount, format: .number)")
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    
+                    Spacer()
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(isHovered ? 0.08 : 0.03))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(isHovered ? 0.15 : 0.05))
+        )
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+        .onTapGesture {
+            onSelect()
+        }
+    }
+}
+
+// MARK: - Utility Views
+struct WindowAccessor: NSViewRepresentable {
+    @Binding var window: NSWindow?
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            self.window = view.window
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+
+// MARK: - Module System
+enum ModuleType: String, Codable, CaseIterable {
+    case speed = "Speed"
+    case productivity = "Productivity"
+    case efficiency = "Efficiency"
+    case quality = "Quality"
+    
+    var color: Color {
+        switch self {
+        case .speed: return .blue
+        case .productivity: return .red
+        case .efficiency: return .green
+        case .quality: return .yellow
+        }
+    }
+}
+
+enum Quality: String, Codable, CaseIterable {
+    case normal = "Normal"
+    case uncommon = "Uncommon"
+    case rare = "Rare"
+    case epic = "Epic"
+    case legendary = "Legendary"
+    
+    var color: Color {
+        switch self {
+        case .normal: return .gray
+        case .uncommon: return .green
+        case .rare: return .blue
+        case .epic: return .purple
+        case .legendary: return .orange
+        }
+    }
+    
+    var multiplier: Double {
+        switch self {
+        case .normal: return 1.0
+        case .uncommon: return 1.3
+        case .rare: return 1.6
+        case .epic: return 1.9
+        case .legendary: return 2.5
+        }
+    }
+}
+
+struct Module: Identifiable, Codable, Hashable {
+    let id: String
+    let name: String
+    let type: ModuleType
+    let level: Int
+    let quality: Quality
+    let speedBonus: Double
+    let productivityBonus: Double
+    let efficiencyBonus: Double
+    let iconAsset: String?
+    
+    var displayName: String {
+        "\(name) (\(quality.rawValue))"
+    }
+}
+
+// MARK: - Machine Tier System
+struct MachineTier: Identifiable, Codable, Hashable {
+    let id: String
+    let name: String
+    let category: String
+    let speed: Double
+    let iconAsset: String?
+    let moduleSlots: Int
+}
+
+// MARK: - Default Machine Preferences
+class MachinePreferences: ObservableObject, Codable {
+    @Published var defaultTiers: [String: String] = [:]
+    
+    enum CodingKeys: CodingKey {
+        case defaultTiers
+    }
+    
+    init() {
+        defaultTiers = [
+            "smelting": "electric-furnace",
+            "assembling": "assembling-3",
+            "mining": "electric-mining-drill"
+        ]
+    }
+    
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        defaultTiers = try container.decode([String: String].self, forKey: .defaultTiers)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(defaultTiers, forKey: .defaultTiers)
+    }
+    
+    func getDefaultTier(for category: String) -> String? {
+        return defaultTiers[category]
+    }
+    
+    func setDefaultTier(for category: String, tierID: String) {
+        defaultTiers[category] = tierID
+        savePreferences()
+    }
+    
+    private func savePreferences() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(data, forKey: "MachinePreferences")
+        }
+    }
+    
+    static func load() -> MachinePreferences {
+        if let data = UserDefaults.standard.data(forKey: "MachinePreferences"),
+           let preferences = try? JSONDecoder().decode(MachinePreferences.self, from: data) {
+            return preferences
+        }
+        return MachinePreferences()
+    }
+}
+
+// MARK: - Machine Tiers Data
+let MACHINE_TIERS: [String: [MachineTier]] = [
+    "assembling": [
+        MachineTier(id: "assembling-1", name: "Assembling Machine 1", category: "assembling", speed: 0.5, iconAsset: "assembling_machine_1", moduleSlots: 0),
+        MachineTier(id: "assembling-2", name: "Assembling Machine 2", category: "assembling", speed: 0.75, iconAsset: "assembling_machine_2", moduleSlots: 2),
+        MachineTier(id: "assembling-3", name: "Assembling Machine 3", category: "assembling", speed: 1.25, iconAsset: "assembling_machine_3", moduleSlots: 4)
+    ],
+    "smelting": [
+        MachineTier(id: "stone-furnace", name: "Stone Furnace", category: "smelting", speed: 1.0, iconAsset: "stone_furnace", moduleSlots: 0),
+        MachineTier(id: "steel-furnace", name: "Steel Furnace", category: "smelting", speed: 2.0, iconAsset: "steel_furnace", moduleSlots: 0),
+        MachineTier(id: "electric-furnace", name: "Electric Furnace", category: "smelting", speed: 2.0, iconAsset: "electric_furnace", moduleSlots: 2)
+    ],
+    "chemistry": [
+        MachineTier(id: "chemical-plant", name: "Chemical Plant", category: "chemistry", speed: 1.0, iconAsset: "chemical_plant", moduleSlots: 3)
+    ],
+    "casting": [
+        MachineTier(id: "foundry", name: "Foundry", category: "casting", speed: 1.0, iconAsset: "foundry", moduleSlots: 4)
+    ],
+    "cryogenic": [
+        MachineTier(id: "cryogenic-plant", name: "Cryogenic Plant", category: "cryogenic", speed: 1.0, iconAsset: "cryogenic_plant", moduleSlots: 4)
+    ],
+    "biochamber": [
+        MachineTier(id: "biochamber", name: "Biochamber", category: "biochamber", speed: 1.0, iconAsset: "biochamber", moduleSlots: 4)
+    ],
+    "electromagnetic": [
+        MachineTier(id: "electromagnetic-plant", name: "Electromagnetic Plant", category: "electromagnetic", speed: 1.0, iconAsset: "electromagnetic_plant", moduleSlots: 5)
+    ],
+    "crushing": [
+        MachineTier(id: "crusher", name: "Crusher", category: "crushing", speed: 1.0, iconAsset: "crusher", moduleSlots: 2)
+    ],
+    "recycling": [
+        MachineTier(id: "recycler", name: "Recycler", category: "recycling", speed: 1.0, iconAsset: "recycler", moduleSlots: 4)
+    ],
+    "space-manufacturing": [
+        MachineTier(id: "space-platform", name: "Space Platform", category: "space-manufacturing", speed: 1.0, iconAsset: "space_platform_foundation", moduleSlots: 0)
+    ],
+    "centrifuging": [
+        MachineTier(id: "centrifuge", name: "Centrifuge", category: "centrifuging", speed: 1.0, iconAsset: "centrifuge", moduleSlots: 2)
+    ],
+    "rocket-building": [
+        MachineTier(id: "rocket-silo", name: "Rocket Silo", category: "rocket-building", speed: 1.0, iconAsset: "rocket_part", moduleSlots: 4)
+    ],
+    "mining": [
+        MachineTier(id: "burner-mining-drill", name: "Burner Mining Drill", category: "mining", speed: 0.25, iconAsset: "burner_mining_drill", moduleSlots: 0),
+        MachineTier(id: "electric-mining-drill", name: "Electric Mining Drill", category: "mining", speed: 0.5, iconAsset: "electric_mining_drill", moduleSlots: 3),
+        MachineTier(id: "big-mining-drill", name: "Big Mining Drill", category: "mining", speed: 2.0, iconAsset: "big_mining_drill", moduleSlots: 4)
+    ],
+    "quality": [
+        MachineTier(id: "quality-module", name: "Quality Module", category: "quality", speed: 1.0, iconAsset: "quality_module", moduleSlots: 0)
+    ]
+]
+
+// MARK: - Available Modules Data
+let MODULES: [Module] = [
+    // Speed Modules - Level 1
+    Module(id: "speed-1-normal", name: "Speed Module", type: .speed, level: 1, quality: .normal,
+           speedBonus: 0.2, productivityBonus: 0, efficiencyBonus: -0.5, iconAsset: "speed_module"),
+    Module(id: "speed-1-uncommon", name: "Speed Module", type: .speed, level: 1, quality: .uncommon,
+           speedBonus: 0.26, productivityBonus: 0, efficiencyBonus: -0.65, iconAsset: "speed_module"),
+    Module(id: "speed-1-rare", name: "Speed Module", type: .speed, level: 1, quality: .rare,
+           speedBonus: 0.32, productivityBonus: 0, efficiencyBonus: -0.8, iconAsset: "speed_module"),
+    Module(id: "speed-1-epic", name: "Speed Module", type: .speed, level: 1, quality: .epic,
+           speedBonus: 0.38, productivityBonus: 0, efficiencyBonus: -0.95, iconAsset: "speed_module"),
+    Module(id: "speed-1-legendary", name: "Speed Module", type: .speed, level: 1, quality: .legendary,
+           speedBonus: 0.5, productivityBonus: 0, efficiencyBonus: -1.25, iconAsset: "speed_module"),
+    
+    // Speed Modules - Level 2
+    Module(id: "speed-2-normal", name: "Speed Module 2", type: .speed, level: 2, quality: .normal,
+           speedBonus: 0.3, productivityBonus: 0, efficiencyBonus: -0.6, iconAsset: "speed_module_2"),
+    Module(id: "speed-2-uncommon", name: "Speed Module 2", type: .speed, level: 2, quality: .uncommon,
+           speedBonus: 0.39, productivityBonus: 0, efficiencyBonus: -0.78, iconAsset: "speed_module_2"),
+    Module(id: "speed-2-rare", name: "Speed Module 2", type: .speed, level: 2, quality: .rare,
+           speedBonus: 0.48, productivityBonus: 0, efficiencyBonus: -0.96, iconAsset: "speed_module_2"),
+    Module(id: "speed-2-epic", name: "Speed Module 2", type: .speed, level: 2, quality: .epic,
+           speedBonus: 0.57, productivityBonus: 0, efficiencyBonus: -1.14, iconAsset: "speed_module_2"),
+    Module(id: "speed-2-legendary", name: "Speed Module 2", type: .speed, level: 2, quality: .legendary,
+           speedBonus: 0.75, productivityBonus: 0, efficiencyBonus: -1.5, iconAsset: "speed_module_2"),
+    
+    // Speed Modules - Level 3
+    Module(id: "speed-3-normal", name: "Speed Module 3", type: .speed, level: 3, quality: .normal,
+           speedBonus: 0.5, productivityBonus: 0, efficiencyBonus: -0.7, iconAsset: "speed_module_3"),
+    Module(id: "speed-3-uncommon", name: "Speed Module 3", type: .speed, level: 3, quality: .uncommon,
+           speedBonus: 0.65, productivityBonus: 0, efficiencyBonus: -0.91, iconAsset: "speed_module_3"),
+    Module(id: "speed-3-rare", name: "Speed Module 3", type: .speed, level: 3, quality: .rare,
+           speedBonus: 0.8, productivityBonus: 0, efficiencyBonus: -1.12, iconAsset: "speed_module_3"),
+    Module(id: "speed-3-epic", name: "Speed Module 3", type: .speed, level: 3, quality: .epic,
+           speedBonus: 0.95, productivityBonus: 0, efficiencyBonus: -1.33, iconAsset: "speed_module_3"),
+    Module(id: "speed-3-legendary", name: "Speed Module 3", type: .speed, level: 3, quality: .legendary,
+           speedBonus: 1.25, productivityBonus: 0, efficiencyBonus: -1.75, iconAsset: "speed_module_3"),
+    
+    // Productivity Modules - Level 1
+    Module(id: "productivity-1-normal", name: "Productivity Module", type: .productivity, level: 1, quality: .normal,
+           speedBonus: -0.15, productivityBonus: 0.04, efficiencyBonus: -0.8, iconAsset: "productivity_module"),
+    Module(id: "productivity-1-uncommon", name: "Productivity Module", type: .productivity, level: 1, quality: .uncommon,
+           speedBonus: -0.195, productivityBonus: 0.052, efficiencyBonus: -1.04, iconAsset: "productivity_module"),
+    Module(id: "productivity-1-rare", name: "Productivity Module", type: .productivity, level: 1, quality: .rare,
+           speedBonus: -0.24, productivityBonus: 0.064, efficiencyBonus: -1.28, iconAsset: "productivity_module"),
+    Module(id: "productivity-1-epic", name: "Productivity Module", type: .productivity, level: 1, quality: .epic,
+           speedBonus: -0.285, productivityBonus: 0.076, efficiencyBonus: -1.52, iconAsset: "productivity_module"),
+    Module(id: "productivity-1-legendary", name: "Productivity Module", type: .productivity, level: 1, quality: .legendary,
+           speedBonus: -0.375, productivityBonus: 0.1, efficiencyBonus: -2.0, iconAsset: "productivity_module"),
+    
+    // Productivity Modules - Level 2
+    Module(id: "productivity-2-normal", name: "Productivity Module 2", type: .productivity, level: 2, quality: .normal,
+           speedBonus: -0.15, productivityBonus: 0.06, efficiencyBonus: -0.8, iconAsset: "productivity_module_2"),
+    Module(id: "productivity-2-uncommon", name: "Productivity Module 2", type: .productivity, level: 2, quality: .uncommon,
+           speedBonus: -0.195, productivityBonus: 0.078, efficiencyBonus: -1.04, iconAsset: "productivity_module_2"),
+    Module(id: "productivity-2-rare", name: "Productivity Module 2", type: .productivity, level: 2, quality: .rare,
+           speedBonus: -0.24, productivityBonus: 0.096, efficiencyBonus: -1.28, iconAsset: "productivity_module_2"),
+    Module(id: "productivity-2-epic", name: "Productivity Module 2", type: .productivity, level: 2, quality: .epic,
+           speedBonus: -0.285, productivityBonus: 0.114, efficiencyBonus: -1.52, iconAsset: "productivity_module_2"),
+    Module(id: "productivity-2-legendary", name: "Productivity Module 2", type: .productivity, level: 2, quality: .legendary,
+           speedBonus: -0.375, productivityBonus: 0.15, efficiencyBonus: -2.0, iconAsset: "productivity_module_2"),
+    
+    // Productivity Modules - Level 3
+    Module(id: "productivity-3-normal", name: "Productivity Module 3", type: .productivity, level: 3, quality: .normal,
+           speedBonus: -0.15, productivityBonus: 0.1, efficiencyBonus: -0.8, iconAsset: "productivity_module_3"),
+    Module(id: "productivity-3-uncommon", name: "Productivity Module 3", type: .productivity, level: 3, quality: .uncommon,
+           speedBonus: -0.195, productivityBonus: 0.13, efficiencyBonus: -1.04, iconAsset: "productivity_module_3"),
+    Module(id: "productivity-3-rare", name: "Productivity Module 3", type: .productivity, level: 3, quality: .rare,
+           speedBonus: -0.24, productivityBonus: 0.16, efficiencyBonus: -1.28, iconAsset: "productivity_module_3"),
+    Module(id: "productivity-3-epic", name: "Productivity Module 3", type: .productivity, level: 3, quality: .epic,
+           speedBonus: -0.285, productivityBonus: 0.19, efficiencyBonus: -1.52, iconAsset: "productivity_module_3"),
+    Module(id: "productivity-3-legendary", name: "Productivity Module 3", type: .productivity, level: 3, quality: .legendary,
+           speedBonus: -0.375, productivityBonus: 0.25, efficiencyBonus: -2.0, iconAsset: "productivity_module_3"),
+    
+    // Efficiency Modules - Level 1
+    Module(id: "efficiency-1-normal", name: "Efficiency Module", type: .efficiency, level: 1, quality: .normal,
+           speedBonus: 0, productivityBonus: 0, efficiencyBonus: 0.3, iconAsset: "efficiency_module"),
+    Module(id: "efficiency-1-uncommon", name: "Efficiency Module", type: .efficiency, level: 1, quality: .uncommon,
+           speedBonus: 0, productivityBonus: 0, efficiencyBonus: 0.39, iconAsset: "efficiency_module"),
+    Module(id: "efficiency-1-rare", name: "Efficiency Module", type: .efficiency, level: 1, quality: .rare,
+           speedBonus: 0, productivityBonus: 0, efficiencyBonus: 0.48, iconAsset: "efficiency_module"),
+    Module(id: "efficiency-1-epic", name: "Efficiency Module", type: .efficiency, level: 1, quality: .epic,
+           speedBonus: 0, productivityBonus: 0, efficiencyBonus: 0.57, iconAsset: "efficiency_module"),
+    Module(id: "efficiency-1-legendary", name: "Efficiency Module", type: .efficiency, level: 1, quality: .legendary,
+           speedBonus: 0, productivityBonus: 0, efficiencyBonus: 0.75, iconAsset: "efficiency_module"),
+    
+    // Efficiency Modules - Level 2
+    Module(id: "efficiency-2-normal", name: "Efficiency Module 2", type: .efficiency, level: 2, quality: .normal,
+           speedBonus: 0, productivityBonus: 0, efficiencyBonus: 0.4, iconAsset: "efficiency_module_2"),
+    Module(id: "efficiency-2-uncommon", name: "Efficiency Module 2", type: .efficiency, level: 2, quality: .uncommon,
+           speedBonus: 0, productivityBonus: 0, efficiencyBonus: 0.52, iconAsset: "efficiency_module_2"),
+    
+    // Efficiency Modules - Level 3
+    Module(id: "efficiency-3-normal", name: "Efficiency Module 3", type: .efficiency, level: 3, quality: .normal,
+           speedBonus: 0, productivityBonus: 0, efficiencyBonus: 0.5, iconAsset: "efficiency_module_3"),
+    Module(id: "efficiency-3-uncommon", name: "Efficiency Module 3", type: .efficiency, level: 3, quality: .uncommon,
+           speedBonus: 0, productivityBonus: 0, efficiencyBonus: 0.65, iconAsset: "efficiency_module_3"),
+    
+    // Quality Modules
+    Module(id: "quality-1-normal", name: "Quality Module", type: .quality, level: 1, quality: .normal,
+           speedBonus: -0.05, productivityBonus: 0, efficiencyBonus: -0.1, iconAsset: "quality_module"),
+    Module(id: "quality-2-normal", name: "Quality Module 2", type: .quality, level: 2, quality: .normal,
+           speedBonus: -0.05, productivityBonus: 0, efficiencyBonus: -0.1, iconAsset: "quality_module_2"),
+    Module(id: "quality-3-normal", name: "Quality Module 3", type: .quality, level: 3, quality: .normal,
+           speedBonus: -0.05, productivityBonus: 0, efficiencyBonus: -0.1, iconAsset: "quality_module_3")
+]
+
+// MARK: - Recipe Model
+struct Recipe: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    var category: String
+    var time: Double
+    var inputs: [String: Double]
+    var outputs: [String: Double]
+}
+
+// MARK: - Recipes Data (simplified for space - you can add all recipes from original)
+let RECIPES: [Recipe] = [
+    // Basic Resources
+    Recipe(id: "iron-plate", name: "Iron Plate", category: "smelting", time: 3.2, inputs: ["Iron Ore": 1], outputs: ["Iron Plate": 1]),
+    Recipe(id: "copper-plate", name: "Copper Plate", category: "smelting", time: 3.2, inputs: ["Copper Ore": 1], outputs: ["Copper Plate": 1]),
+    Recipe(id: "steel-plate", name: "Steel Plate", category: "smelting", time: 16, inputs: ["Iron Plate": 5], outputs: ["Steel Plate": 1]),
+    Recipe(id: "stone-brick", name: "Stone Brick", category: "smelting", time: 3.2, inputs: ["Stone": 2], outputs: ["Stone Brick": 1]),
+    
+    // Basic Components
+    Recipe(id: "copper-cable", name: "Copper Cable", category: "assembling", time: 0.5, inputs: ["Copper Plate": 1], outputs: ["Copper Cable": 2]),
+    Recipe(id: "iron-stick", name: "Iron Stick", category: "assembling", time: 0.5, inputs: ["Iron Plate": 1], outputs: ["Iron Stick": 2]),
+    Recipe(id: "iron-gear-wheel", name: "Iron Gear Wheel", category: "assembling", time: 0.5, inputs: ["Iron Plate": 2], outputs: ["Iron Gear Wheel": 1]),
+    Recipe(id: "pipe", name: "Pipe", category: "assembling", time: 0.5, inputs: ["Iron Plate": 1], outputs: ["Pipe": 1]),
+    
+    // Circuits
+    Recipe(id: "electronic-circuit", name: "Electronic Circuit", category: "assembling", time: 0.5, inputs: ["Iron Plate": 1, "Copper Cable": 3], outputs: ["Electronic Circuit": 1]),
+    Recipe(id: "advanced-circuit", name: "Advanced Circuit", category: "assembling", time: 6, inputs: ["Electronic Circuit": 2, "Plastic Bar": 2, "Copper Cable": 4], outputs: ["Advanced Circuit": 1]),
+    Recipe(id: "processing-unit", name: "Processing Unit", category: "assembling", time: 10, inputs: ["Electronic Circuit": 20, "Advanced Circuit": 2, "Sulfuric Acid": 5], outputs: ["Processing Unit": 1]),
+    
+    // Science Packs
+    Recipe(id: "automation-science-pack", name: "Automation Science Pack", category: "assembling", time: 5, inputs: ["Copper Plate": 1, "Iron Gear Wheel": 1], outputs: ["Automation Science Pack": 1]),
+    Recipe(id: "logistic-science-pack", name: "Logistic Science Pack", category: "assembling", time: 6, inputs: ["Inserter": 1, "Transport Belt": 1], outputs: ["Logistic Science Pack": 1]),
+    
+    // Add more recipes as needed...
+]
+
+// MARK: - Icon Assets (simplified)
+let ICON_ASSETS: [String: String] = [
+    "Iron Plate": "iron_plate",
+    "Copper Plate": "copper_plate",
+    "Steel Plate": "steel_plate",
+    "assembling": "assembling_machine_3",
+    "smelting": "electric_furnace",
+    "chemistry": "chemical_plant",
+    // Add more as needed...
+]
+
+// MARK: - Alternative Recipe IDs
+let ALTERNATIVE_RECIPE_IDS: Set<String> = []
+
+// MARK: - Item mappings
+let ITEM_TO_PRODUCERS: [String: [Recipe]] = {
+    var mapping: [String: [Recipe]] = [:]
+    for recipe in RECIPES {
+        for (outputItem, _) in recipe.outputs {
+            mapping[outputItem, default: []].append(recipe)
+        }
+    }
+    return mapping
+}()
+
+let ITEM_TO_CONSUMERS: [String: [Recipe]] = {
+    var mapping: [String: [Recipe]] = [:]
+    for recipe in RECIPES {
+        for (inputItem, _) in recipe.inputs {
+            mapping[inputItem, default: []].append(recipe)
+        }
+    }
+    return mapping
+}()
+
+// MARK: - Node Model
+struct Node: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var recipeID: String
+    var x: CGFloat
+    var y: CGFloat
+    var targetPerMin: Double?
+    var speedMultiplier: Double
+    var selectedMachineTierID: String?
+    var modules: [Module?] = []
+
+    init(recipeID: String, x: CGFloat, y: CGFloat, targetPerMin: Double? = nil, speedMultiplier: Double? = nil) {
+        self.recipeID = recipeID
+        self.x = x
+        self.y = y
+        self.targetPerMin = targetPerMin
+        
+        if let recipe = RECIPES.first(where: { $0.id == recipeID }), recipe.category == "cryogenic" {
+            self.speedMultiplier = speedMultiplier ?? 2.0
+        } else {
+            self.speedMultiplier = speedMultiplier ?? 1.0
+        }
+    }
+    
+    var totalSpeedBonus: Double {
+        return modules.compactMap { $0?.speedBonus }.reduce(0, +)
+    }
+    
+    var totalProductivityBonus: Double {
+        return modules.compactMap { $0?.productivityBonus }.reduce(0, +)
+    }
+    
+    var totalEfficiencyBonus: Double {
+        return modules.compactMap { $0?.efficiencyBonus }.reduce(0, +)
+    }
+    
+    var speed: Double {
+        return getEffectiveSpeed(for: self)
+    }
+}
+
+// MARK: - Edge Model
+struct Edge: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var fromNode: UUID
+    var toNode: UUID
+    var item: String
+}
+
+// MARK: - Port Key
+struct PortKey: Hashable, Codable {
+    var nodeID: UUID
+    var item: String
+    var side: IOSide
+}
+
+enum IOSide: String, Codable, CaseIterable {
+    case input = "input"
+    case output = "output"
+    
+    var opposite: IOSide {
+        switch self {
+        case .input: return .output
+        case .output: return .input
+        }
+    }
+}
+
+// MARK: - Helper Functions
+func getSelectedMachineTier(for node: Node, preferences: MachinePreferences? = nil) -> MachineTier? {
+    guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }),
+          let tiers = MACHINE_TIERS[recipe.category] else {
+        return nil
+    }
+    
+    if let selectedTierID = node.selectedMachineTierID,
+       let tier = tiers.first(where: { $0.id == selectedTierID }) {
+        return tier
+    }
+    
+    if let prefs = preferences,
+       let defaultTierID = prefs.getDefaultTier(for: recipe.category),
+       let tier = tiers.first(where: { $0.id == defaultTierID }) {
+        return tier
+    }
+    
+    return tiers.first
+}
+
+func getEffectiveSpeed(for node: Node) -> Double {
+    let baseSpeed = if let selectedTier = getSelectedMachineTier(for: node) {
+        selectedTier.speed
+    } else {
+        1.0
+    }
+    
+    let moduleSpeedBonus = node.totalSpeedBonus
+    let effectiveSpeed = (baseSpeed * (1 + moduleSpeedBonus)) * node.speedMultiplier
+    
+    return max(Constants.minSpeed, effectiveSpeed)
+}
+
+func formatMachineCount(_ count: Double) -> String {
+    if count == floor(count) {
+        return String(format: "%.0f", count)
+    } else {
+        return String(format: "%.1f", count)
+    }
+}
+
+func machineName(for category: String) -> String {
+    switch category {
+    case "assembling": return "Assembling Machine"
+    case "smelting": return "Furnace"
+    case "casting": return "Foundry"
+    case "chemistry": return "Chemical Plant"
+    case "cryogenic": return "Cryogenic Plant"
+    case "biochamber": return "Biochamber"
+    case "electromagnetic": return "Electromagnetic Plant"
+    case "crushing": return "Crusher"
+    case "recycling": return "Recycler"
+    case "space-manufacturing": return "Space Platform"
+    case "centrifuging": return "Centrifuge"
+    case "rocket-building": return "Rocket Silo"
+    case "mining": return "Mining Drill"
+    case "quality": return "Quality Module"
+    default: return category.capitalized
+    }
+}
+
+func machineCount(for node: Node) -> Double {
+    guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+        return 0
+    }
+    
+    let outputAmount = recipe.outputs.values.first ?? 1
+    let actualOutput = outputAmount * (1 + node.totalProductivityBonus)
+    let craftsPerMin = (node.targetPerMin ?? 0) / actualOutput
+    let machines = (craftsPerMin * recipe.time) / 60.0 / max(Constants.minSpeed, node.speed)
+    
+    return machines
+}
+
+func isPortConnected(nodeID: UUID, item: String, side: IOSide, edges: [Edge]) -> Bool {
+    return edges.contains { edge in
+        switch side {
+        case .output:
+            return edge.fromNode == nodeID && edge.item == item
+        case .input:
+            return edge.toNode == nodeID && edge.item == item
+        }
+    }
+}
+
+func isAlternativeRecipe(_ recipe: Recipe) -> Bool {
+    return ALTERNATIVE_RECIPE_IDS.contains(recipe.id)
+}
+
+// MARK: - Graph State
+final class GraphState: ObservableObject, Codable {
+    enum CodingKeys: CodingKey {
+        case nodes, edges
+    }
+    
+    enum Aggregate: String, CaseIterable {
+        case max = "Max"
+        case sum = "Sum"
+    }
+    
+    @Published var nodes: [UUID: Node] = [:]
+    @Published var edges: [Edge] = []
+    @Published var dragging: DragContext? = nil
+    @Published var showPicker = false
+    @Published var pickerContext: PickerContext? = nil
+    @Published var showGeneralPicker = false
+    @Published var generalPickerDropPoint: CGPoint = .zero
+    @Published var aggregate: Aggregate = .max
+    @Published var portFrames: [PortKey: CGRect] = [:]
+    
+    private var isComputing = false
+    private var pendingCompute = false
+    
+    init() {}
+    
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let nodeArray = try container.decode([Node].self, forKey: .nodes)
+        self.nodes = Dictionary(uniqueKeysWithValues: nodeArray.map { ($0.id, $0) })
+        self.edges = try container.decode([Edge].self, forKey: .edges)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Array(nodes.values), forKey: .nodes)
+        try container.encode(edges, forKey: .edges)
+    }
+    
+    @discardableResult
+    func addNode(recipeID: String, at point: CGPoint) -> Node {
+        var node = Node(recipeID: recipeID, x: point.x, y: point.y)
+        
+        if let recipe = RECIPES.first(where: { $0.id == recipeID }),
+           let tiers = MACHINE_TIERS[recipe.category] {
+            let preferences = MachinePreferences.load()
+            if let defaultTierID = preferences.getDefaultTier(for: recipe.category),
+               tiers.contains(where: { $0.id == defaultTierID }) {
+                node.selectedMachineTierID = defaultTierID
+            }
+            
+            if let selectedTier = getSelectedMachineTier(for: node) {
+                node.modules = Array(repeating: nil, count: selectedTier.moduleSlots)
+            }
+        }
+        
+        nodes[node.id] = node
+        computeFlows()
+        return node
+    }
+    
+    func updateNode(_ node: Node) {
+        nodes[node.id] = node
+        computeFlows()
+    }
+    
+    func setTarget(for nodeID: UUID, to value: Double?) {
+        guard var node = nodes[nodeID] else { return }
+        
+        node.targetPerMin = value.map { max(0, $0) }
+        nodes[nodeID] = node
+        
+        computeFlows()
+    }
+    
+    func addEdge(from: UUID, to: UUID, item: String) {
+        guard from != to else { return }
+        
+        let edgeExists = edges.contains { edge in
+            edge.fromNode == from && edge.toNode == to && edge.item == item
+        }
+        
+        if !edgeExists {
+            edges.append(Edge(fromNode: from, toNode: to, item: item))
+            computeFlows()
+        }
+    }
+    
+    func removeEdge(_ edge: Edge) {
+        edges.removeAll { $0.id == edge.id }
+        computeFlows()
+    }
+    
+    func removeNode(_ nodeID: UUID) {
+        nodes.removeValue(forKey: nodeID)
+        edges.removeAll { $0.fromNode == nodeID || $0.toNode == nodeID }
+        computeFlows()
+    }
+    
+    func computeFlows() {
+        guard !isComputing else {
+            pendingCompute = true
+            return
+        }
+        
+        isComputing = true
+        defer {
+            isComputing = false
+            if pendingCompute {
+                pendingCompute = false
+                DispatchQueue.main.async { [weak self] in
+                    self?.computeFlows()
+                }
+            }
+        }
+        
+        var newTargets: [UUID: Double] = [:]
+        
+        for (id, node) in nodes {
+            newTargets[id] = node.targetPerMin ?? 0
+        }
+        
+        var hasChanges = true
+        var iterations = 0
+        let maxIterations = 10
+        
+        while hasChanges && iterations < maxIterations {
+            hasChanges = false
+            iterations += 1
+            
+            var needBySupplier: [UUID: Double] = [:]
+            
+            for edge in edges {
+                guard let consumer = nodes[edge.toNode],
+                      let recipe = RECIPES.first(where: { $0.id == consumer.recipeID }) else {
+                    continue
+                }
+                
+                let outputAmount = recipe.outputs.values.first ?? 1
+                let actualOutput = outputAmount * (1 + consumer.totalProductivityBonus)
+                let craftsPerMin = (newTargets[consumer.id] ?? 0) / actualOutput
+                let inputAmount = recipe.inputs[edge.item] ?? 0
+                let totalNeed = craftsPerMin * inputAmount
+                
+                switch aggregate {
+                case .sum:
+                    needBySupplier[edge.fromNode, default: 0] += totalNeed
+                case .max:
+                    needBySupplier[edge.fromNode] = max(needBySupplier[edge.fromNode] ?? 0, totalNeed)
+                }
+            }
+            
+            for (supplierID, need) in needBySupplier {
+                let currentTarget = newTargets[supplierID] ?? 0
+                if abs(currentTarget - need) > Constants.computationTolerance {
+                    newTargets[supplierID] = need
+                    hasChanges = true
+                }
+            }
+        }
+        
+        for (id, targetValue) in newTargets {
+            guard var node = nodes[id] else { continue }
+            let roundedTarget = abs(targetValue - round(targetValue)) < 0.01 ? round(targetValue) : round(targetValue * 10) / 10
+            if abs((node.targetPerMin ?? 0) - roundedTarget) > Constants.computationTolerance {
+                node.targetPerMin = roundedTarget
+                nodes[id] = node
+            }
+        }
+    }
+    
+    func exportJSON(from window: NSWindow?) {
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.json]
+        savePanel.nameFieldStringValue = "factorio_cards_plan.json"
+        
+        let targetWindow = window ?? NSApp.keyWindow
+        
+        savePanel.beginSheetModal(for: targetWindow!) { response in
+            guard response == .OK, let url = savePanel.url else { return }
+            
+            do {
+                let data = try JSONEncoder().encode(self)
+                try data.write(to: url)
+            } catch {
+                DispatchQueue.main.async {
+                    NSAlert(error: error).runModal()
+                }
+            }
+        }
+    }
+    
+    func importJSON(from window: NSWindow?) {
+        let openPanel = NSOpenPanel()
+        openPanel.allowedContentTypes = [.json]
+        
+        let targetWindow = window ?? NSApp.keyWindow
+        
+        openPanel.beginSheetModal(for: targetWindow!) { response in
+            guard response == .OK, let url = openPanel.url else { return }
+            
+            do {
+                let data = try Data(contentsOf: url)
+                let graphState = try JSONDecoder().decode(GraphState.self, from: data)
+                
+                DispatchQueue.main.async {
+                    self.nodes = graphState.nodes
+                    self.edges = graphState.edges
+                    self.computeFlows()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    NSAlert(error: error).runModal()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Supporting Types
+struct DragContext: Equatable {
+    var fromPort: PortKey
+    var startPoint: CGPoint
+    var currentPoint: CGPoint
+}
+
+struct PickerContext: Identifiable, Equatable {
+    var id = UUID()
+    var fromPort: PortKey
+    var dropPoint: CGPoint
+}
+
+struct PortFrame: Equatable {
+    var key: PortKey
+    var frame: CGRect
+}
+
+struct PortFramesKey: PreferenceKey {
+    static var defaultValue: [PortFrame] = []
+    static func reduce(value: inout [PortFrame], nextValue: () -> [PortFrame]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
+// MARK: - Main App
+@main
+struct FactorioPlannerApp: App {
+    @StateObject private var graph = GraphState()
+    @StateObject private var preferences = MachinePreferences.load()
+    
+    var body: some Scene {
+        WindowGroup("Factorio Planner") {
+            PlannerRoot()
+                .environmentObject(graph)
+                .environmentObject(preferences)
+        }
+        .windowStyle(.titleBar)
+    }
+}
+
+// MARK: - Root View
+struct PlannerRoot: View {
+    @EnvironmentObject var graph: GraphState
+    @State private var window: NSWindow?
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            TopBar()
+            CanvasView()
+        }
+        .background(WindowAccessor(window: $window))
+        .sheet(isPresented: $graph.showPicker) {
+            if let context = graph.pickerContext {
+                RecipePicker(context: context)
+            }
+        }
+        .sheet(isPresented: $graph.showGeneralPicker) {
+            GeneralRecipePicker()
+        }
+        .onPreferenceChange(PortFramesKey.self) { frames in
+            var frameDict: [PortKey: CGRect] = [:]
+            for portFrame in frames {
+                frameDict[portFrame.key] = portFrame.frame
+            }
+            graph.portFrames = frameDict
+        }
+    }
+}
+
+// MARK: - Top Bar
+struct TopBar: View {
+    @EnvironmentObject var graph: GraphState
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Button("Add Recipe") {
+                graph.generalPickerDropPoint = CGPoint(
+                    x: 120 + .random(in: 0...80),
+                    y: 160 + .random(in: 0...60)
+                )
+                graph.showGeneralPicker = true
+            }
+            .buttonStyle(TopButtonStyle(primary: true))
+            
+            Menu("Preferences") {
+                Menu("Default Machines") {
+                    ForEach(MACHINE_TIERS.keys.sorted(), id: \.self) { category in
+                        if let tiers = MACHINE_TIERS[category], tiers.count > 1 {
+                            Menu(machineName(for: category)) {
+                                ForEach(tiers, id: \.id) { tier in
+                                    Button(action: {
+                                        let prefs = MachinePreferences.load()
+                                        prefs.setDefaultTier(for: category, tierID: tier.id)
+                                    }) {
+                                        HStack {
+                                            Text(tier.name)
+                                            if MachinePreferences.load().getDefaultTier(for: category) == tier.id {
+                                                Spacer()
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .buttonStyle(TopButtonStyle())
+            
+            Menu("Flow: \(graph.aggregate.rawValue)") {
+                ForEach(GraphState.Aggregate.allCases, id: \.self) { mode in
+                    Button(mode.rawValue) {
+                        graph.aggregate = mode
+                        graph.computeFlows()
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            Button("Export .json") {
+                graph.exportJSON(from: NSApp.keyWindow)
+            }
+            .buttonStyle(TopButtonStyle())
+            
+            Button("Import .json") {
+                graph.importJSON(from: NSApp.keyWindow)
+            }
+            .buttonStyle(TopButtonStyle())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial)
+        .overlay(Divider(), alignment: .bottom)
+    }
+}
+
+struct TopButtonStyle: ButtonStyle {
+    var primary = false
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background {
+                if primary {
+                    LinearGradient(
+                        colors: [
+                            Color(nsColor: NSColor(calibratedRed: 0.15, green: 0.19, blue: 0.28, alpha: 1)),
+                            Color(nsColor: NSColor(calibratedRed: 0.11, green: 0.14, blue: 0.20, alpha: 1))
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                } else {
+                    Color(nsColor: NSColor(calibratedWhite: 0.16, alpha: 1))
+                }
+            }
+            .foregroundStyle(.primary)
+            .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.white.opacity(0.08))
+            )
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Canvas View
+struct CanvasView: View {
+    @EnvironmentObject var graph: GraphState
+    
+    var body: some View {
+        GeometryReader { _ in
+            ZStack {
+                GridBackground()
+                    .ignoresSafeArea()
+                
+                WiresLayer(portFrames: graph.portFrames)
+                
+                if let dragContext = graph.dragging {
+                    WireTempPath(from: dragContext.startPoint, to: dragContext.currentPoint)
+                }
+                
+                ForEach(Array(graph.nodes.values), id: \.id) { node in
+                    NodeCard(node: node)
+                        .position(x: node.x, y: node.y)
+                }
+            }
+            .coordinateSpace(name: "canvas")
+            .background(DragReceiver())
+            .onDrop(of: [UTType.text], isTargeted: .constant(false)) { _, _ in false }
+        }
+    }
+}
+
+struct GridBackground: View {
+    var body: some View {
+        Rectangle()
+            .fill(
+                RadialGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: Color(white: 0.12), location: 0),
+                        .init(color: Color(white: 0.10), location: 1)
+                    ]),
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: 1
+                )
+            )
+            .overlay(
+                Canvas { context, size in
+                    let dotPath = Path(CGRect(x: 0, y: 0, width: Constants.dotSize, height: Constants.dotSize))
+                    
+                    for x in stride(from: 25.0, through: size.width, by: Constants.gridSpacing) {
+                        for y in stride(from: 25.0, through: size.height, by: Constants.gridSpacing) {
+                            context.translateBy(x: x, y: y)
+                            context.fill(dotPath, with: .color(Color.white.opacity(0.05)))
+                            context.translateBy(x: -x, y: -y)
+                        }
+                    }
+                }
+            )
+    }
+}
+
+struct DragReceiver: View {
+    var body: some View {
+        Color.clear
+    }
+}
+
+// MARK: - Node Card
+struct NodeCard: View {
+    @EnvironmentObject var graph: GraphState
+    var node: Node
+    
+    @State private var dragOffset: CGSize = .zero
+    @State private var isDragging: Bool = false
+    @State private var rateText: String = ""
+    @FocusState private var rateFocused: Bool
+    
+    var body: some View {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return AnyView(EmptyView())
+        }
+        
+        let speedBinding = Binding<Double>(
+            get: { graph.nodes[node.id]?.speedMultiplier ?? 1 },
+            set: { value in
+                guard var updatedNode = graph.nodes[node.id] else { return }
+                updatedNode.speedMultiplier = max(Constants.minSpeed, value)
+                graph.updateNode(updatedNode)
+            }
+        )
+        
+        let primaryItem = recipe.outputs.keys.first ?? recipe.inputs.keys.first ?? recipe.name
+        
+        return AnyView(
+            VStack(alignment: .leading, spacing: 2) {
+                // Header
+                HStack(spacing: 6) {
+                    ItemBadge(item: primaryItem)
+                        .hoverTooltip(recipe.name)
+                    
+                    Text(primaryItem)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                    
+                    Spacer(minLength: 0)
+                    
+                    Button(action: {
+                        graph.removeNode(node.id)
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .imageScale(.small)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                // Controls
+                HStack {
+                    HStack(spacing: 4) {
+                        TextField("Rate", text: Binding(
+                            get: { rateText },
+                            set: { text in
+                                rateText = text
+                                let trimmed = text.trimmingCharacters(in: .whitespaces)
+                                
+                                if trimmed.isEmpty {
+                                    graph.setTarget(for: node.id, to: nil)
+                                } else if let value = Double(trimmed) {
+                                    graph.setTarget(for: node.id, to: max(0, value))
+                                }
+                            }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 50)
+                        .focused($rateFocused)
+                        
+                        Text("/min")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                    }
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 4) {
+                        TextField("Speed", value: speedBinding, format: .number.precision(.fractionLength(0...2)))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 50)
+                        
+                        Text("×")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                    }
+                }
+                
+                Divider()
+                
+                // I/O Ports with machine icon in middle
+                HStack(alignment: .center, spacing: 4) {
+                    // Inputs
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("In")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        
+                        ForEach(recipe.inputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                            PortRow(nodeID: node.id, side: .input, item: item, amount: amount)
+                                .font(.caption2)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Machine icon in center with modules
+                    VStack(spacing: 2) {
+                        MachineIcon(node: node)
+                        
+                        Text(formatMachineCount(machineCount(for: node)))
+                            .font(.body)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.primary)
+                            .monospacedDigit()
+                        
+                        // Module slots
+                        if let selectedTier = getSelectedMachineTier(for: node), selectedTier.moduleSlots > 0 {
+                            ModuleSlotsView(node: node, slotCount: selectedTier.moduleSlots)
+                        }
+                        
+                        // Module stats if any modules installed
+                        if !node.modules.compactMap({ $0 }).isEmpty {
+                            ModuleStatsView(node: node)
+                        }
+                    }
+                    .padding(.top, 16)
+                    .frame(maxWidth: 60)
+                    
+                    Spacer()
+                    
+                    // Outputs
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Out")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        
+                        ForEach(recipe.outputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                            PortRow(nodeID: node.id, side: .output, item: item, amount: amount)
+                                .font(.caption2)
+                        }
+                    }
+                }
+            }
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(0.20))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.white.opacity(0.05))
+            )
+            .frame(minWidth: Constants.nodeMinWidth, maxWidth: Constants.nodeMaxWidth, alignment: .leading)
+            .offset(dragOffset)
+            .scaleEffect(isDragging ? 1.02 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: isDragging)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if !isDragging {
+                            isDragging = true
+                        }
+                        dragOffset = value.translation
+                    }
+                    .onEnded { value in
+                        isDragging = false
+                        
+                        guard var updatedNode = graph.nodes[node.id] else { return }
+                        updatedNode.x = node.x + value.translation.width
+                        updatedNode.y = node.y + value.translation.height
+                        
+                        graph.nodes[node.id] = updatedNode
+                        dragOffset = .zero
+                        graph.computeFlows()
+                    }
+            )
+            .onAppear {
+                updateRateText()
+            }
+            .onChange(of: graph.nodes[node.id]?.targetPerMin) { _, _ in
+                if !rateFocused {
+                    updateRateText()
+                }
+            }
+        )
+    }
+    
+    private func updateRateText() {
+        if let targetPerMin = graph.nodes[node.id]?.targetPerMin {
+            if targetPerMin == floor(targetPerMin) {
+                rateText = String(format: "%.0f", targetPerMin)
+            } else {
+                rateText = String(format: "%.1f", targetPerMin)
+            }
+        } else {
+            rateText = ""
+        }
+    }
+}
+
+// MARK: - Machine Icon
+struct MachineIcon: View {
+    var node: Node
+    @EnvironmentObject var graph: GraphState
+    
+    var body: some View {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return AnyView(EmptyView())
+        }
+        
+        let selectedTier = getSelectedMachineTier(for: node)
+        let iconColor = machineIconColor(for: recipe.category)
+        
+        return AnyView(
+            Group {
+                if let tier = selectedTier, let assetName = tier.iconAsset {
+                    Image(assetName)
+                        .renderingMode(.original)
+                        .resizable()
+                        .interpolation(.none)
+                        .scaledToFit()
+                } else if let assetName = ICON_ASSETS[recipe.category] {
+                    Image(assetName)
+                        .renderingMode(.original)
+                        .resizable()
+                        .interpolation(.none)
+                        .scaledToFit()
+                } else {
+                    Image(systemName: machineIconName(for: recipe.category))
+                        .font(.title2)
+                        .foregroundStyle(iconColor)
+                }
+            }
+            .frame(width: 50, height: 50)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(iconColor.opacity(0.3), lineWidth: 1)
+            )
+            .onTapGesture {
+                cycleMachineTier(for: node)
+            }
+            .hoverTooltip(selectedTier?.name ?? machineName(for: recipe.category))
+        )
+    }
+    
+    private func cycleMachineTier(for node: Node) {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }),
+              let tiers = MACHINE_TIERS[recipe.category],
+              tiers.count > 1 else {
+            return
+        }
+        
+        var updatedNode = node
+        
+        let currentIndex: Int
+        if let selectedTierID = node.selectedMachineTierID,
+           let index = tiers.firstIndex(where: { $0.id == selectedTierID }) {
+            currentIndex = index
+        } else {
+            currentIndex = 0
+        }
+        
+        let nextIndex = (currentIndex + 1) % tiers.count
+        let nextTier = tiers[nextIndex]
+        
+        updatedNode.selectedMachineTierID = nextTier.id
+        
+        // Update module slots when tier changes
+        updatedNode.modules = Array(repeating: nil, count: nextTier.moduleSlots)
+        
+        graph.updateNode(updatedNode)
+    }
+    
+    private func machineIconName(for category: String) -> String {
+        switch category {
+        case "assembling": return "gearshape.2"
+        case "smelting", "casting": return "flame"
+        case "chemistry", "cryogenic": return "flask"
+        case "biochamber": return "leaf"
+        case "electromagnetic": return "bolt"
+        case "crushing", "recycling": return "hammer"
+        case "space-manufacturing": return "sparkles"
+        case "centrifuging": return "tornado"
+        case "rocket-building": return "airplane"
+        case "mining": return "cube"
+        case "quality": return "star"
+        default: return "gearshape"
+        }
+    }
+    
+    private func machineIconColor(for category: String) -> Color {
+        switch category {
+        case "assembling": return .blue
+        case "smelting", "casting": return .orange
+        case "chemistry", "cryogenic": return .green
+        case "biochamber": return Color.green
+        case "electromagnetic": return .purple
+        case "crushing", "recycling": return .gray
+        case "space-manufacturing": return .cyan
+        case "centrifuging": return .yellow
+        case "rocket-building": return .red
+        case "mining": return .brown
+        case "quality": return .yellow
+        default: return .secondary
+        }
+    }
+}
+
+// MARK: - Module UI Components
+struct ModuleSlotsView: View {
+    @EnvironmentObject var graph: GraphState
+    var node: Node
+    var slotCount: Int
+    
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("Modules")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 2) {
+                ForEach(0..<slotCount, id: \.self) { index in
+                    ModuleSlot(node: node, slotIndex: index)
+                }
+            }
+        }
+    }
+}
+
+struct ModuleSlot: View {
+    @EnvironmentObject var graph: GraphState
+    var node: Node
+    var slotIndex: Int
+    @State private var showModulePicker = false
+    
+    var body: some View {
+        Button(action: {
+            showModulePicker = true
+        }) {
+            Group {
+                if slotIndex < node.modules.count, let module = node.modules[slotIndex] {
+                    ModuleIcon(module: module, size: 12)
+                } else {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.gray.opacity(0.3))
+                        .overlay(
+                            Image(systemName: "plus")
+                                .font(.system(size: 6))
+                                .foregroundStyle(.secondary)
+                        )
+                        .frame(width: 12, height: 12)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showModulePicker) {
+            ModulePicker(node: node, slotIndex: slotIndex)
+        }
+    }
+}
+
+struct ModuleIcon: View {
+    var module: Module
+    var size: CGFloat = 18
+    
+    var body: some View {
+        Group {
+            if let assetName = module.iconAsset {
+                Image(assetName)
+                    .renderingMode(.original)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+            } else {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(module.type.color.opacity(0.8))
+                    .overlay(
+                        Text(String(module.type.rawValue.first ?? "M"))
+                            .font(.system(size: size * 0.5, weight: .bold))
+                            .foregroundStyle(.white)
+                    )
+            }
+        }
+        .frame(width: size, height: size)
+        .overlay(
+            RoundedRectangle(cornerRadius: 2)
+                .stroke(module.quality.color, lineWidth: 1)
+        )
+        .hoverTooltip(module.displayName)
+    }
+}
+
+struct ModuleStatsView: View {
+    var node: Node
+    
+    var body: some View {
+        VStack(spacing: 1) {
+            if node.totalSpeedBonus != 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "speedometer")
+                        .font(.system(size: 8))
+                    Text(formatBonus(node.totalSpeedBonus))
+                        .font(.system(size: 8))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(node.totalSpeedBonus > 0 ? .green : .red)
+            }
+            
+            if node.totalProductivityBonus != 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 8))
+                    Text(formatBonus(node.totalProductivityBonus))
+                        .font(.system(size: 8))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(.orange)
+            }
+            
+            if node.totalEfficiencyBonus != 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 8))
+                    Text(formatBonus(node.totalEfficiencyBonus))
+                        .font(.system(size: 8))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(node.totalEfficiencyBonus > 0 ? .green : .red)
+            }
+        }
+    }
+    
+    private func formatBonus(_ value: Double) -> String {
+        let percentage = value * 100
+        let sign = percentage >= 0 ? "+" : ""
+        return "\(sign)\(Int(percentage))%"
+    }
+}
+
+struct ModulePicker: View {
+    @EnvironmentObject var graph: GraphState
+    var node: Node
+    var slotIndex: Int
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedType: ModuleType = .speed
+    @State private var selectedLevel: Int = 1
+    @State private var selectedQuality: Quality = .normal
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Choose Module")
+                    .font(.headline)
+                Spacer()
+                Button("Close") {
+                    dismiss()
+                }
+            }
+            
+            // Type picker
+            Picker("Module Type", selection: $selectedType) {
+                ForEach(ModuleType.allCases, id: \.self) { type in
+                    Text(type.rawValue).tag(type)
+                }
+            }
+            .pickerStyle(.segmented)
+            
+            // Level picker
+            HStack {
+                Text("Level:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Picker("Level", selection: $selectedLevel) {
+                    ForEach(availableLevels, id: \.self) { level in
+                        Text("\(level)").tag(level)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 60)
+                
+                Spacer()
+                
+                Text("Quality:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Picker("Quality", selection: $selectedQuality) {
+                    ForEach(Quality.allCases, id: \.self) { quality in
+                        HStack {
+                            Circle()
+                                .fill(quality.color)
+                                .frame(width: 8, height: 8)
+                            Text(quality.rawValue)
+                        }
+                        .tag(quality)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 120)
+            }
+            
+            // Module preview
+            if let selectedModule = currentModule {
+                ModulePreview(module: selectedModule)
+            }
+            
+            Spacer()
+            
+            // Action buttons
+            HStack {
+                Button("Remove Module") {
+                    removeModule()
+                }
+                .disabled(slotIndex >= node.modules.count || node.modules[slotIndex] == nil)
+                .buttonStyle(.bordered)
+                
+                Spacer()
+                
+                Button("Install Module") {
+                    if let module = currentModule {
+                        installModule(module)
+                    }
+                }
+                .disabled(currentModule == nil)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding()
+        .frame(width: 400, height: 350)
+        .onAppear {
+            // Load current module if exists
+            if slotIndex < node.modules.count, let currentMod = node.modules[slotIndex] {
+                selectedType = currentMod.type
+                selectedLevel = currentMod.level
+                selectedQuality = currentMod.quality
+            }
+        }
+    }
+    
+    private var availableLevels: [Int] {
+        let levels = MODULES
+            .filter { $0.type == selectedType }
+            .map { $0.level }
+        return Array(Set(levels)).sorted()
+    }
+    
+    private var currentModule: Module? {
+        return MODULES.first { module in
+            module.type == selectedType &&
+            module.level == selectedLevel &&
+            module.quality == selectedQuality
+        }
+    }
+    
+    private func installModule(_ module: Module) {
+        var updatedNode = node
+        
+        // Ensure modules array is large enough
+        while updatedNode.modules.count <= slotIndex {
+            updatedNode.modules.append(nil)
+        }
+        
+        updatedNode.modules[slotIndex] = module
+        graph.updateNode(updatedNode)
+        dismiss()
+    }
+    
+    private func removeModule() {
+        var updatedNode = node
+        if slotIndex < updatedNode.modules.count {
+            updatedNode.modules[slotIndex] = nil
+        }
+        graph.updateNode(updatedNode)
+        dismiss()
+    }
+}
+
+struct ModulePreview: View {
+    var module: Module
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                ModuleIcon(module: module, size: 24)
+                VStack(alignment: .leading) {
+                    Text(module.name)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text("\(module.quality.rawValue) Quality")
+                        .font(.caption)
+                        .foregroundStyle(module.quality.color)
+                }
+                Spacer()
+            }
+            
+            Divider()
+            
+            VStack(alignment: .leading, spacing: 4) {
+                if module.speedBonus != 0 {
+                    StatRow(label: "Speed", value: module.speedBonus)
+                }
+                if module.productivityBonus != 0 {
+                    StatRow(label: "Productivity", value: module.productivityBonus)
+                }
+                if module.efficiencyBonus != 0 {
+                    StatRow(label: "Efficiency", value: module.efficiencyBonus)
+                }
+            }
+        }
+        .padding()
+        .background(Color.black.opacity(0.1))
+        .cornerRadius(8)
+    }
+}
+
+struct StatRow: View {
+    var label: String
+    var value: Double
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(formatValue(value))
+                .font(.caption)
+                .foregroundStyle(value >= 0 ? .green : .red)
+                .monospacedDigit()
+        }
+    }
+    
+    private func formatValue(_ value: Double) -> String {
+        let percentage = value * 100
+        let sign = percentage >= 0 ? "+" : ""
+        return String(format: "\(sign)%.1f%%", percentage)
+    }
+}

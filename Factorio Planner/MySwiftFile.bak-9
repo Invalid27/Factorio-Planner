@@ -1,0 +1,2905 @@
+import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
+
+// MARK: - Constants
+private enum Constants {
+    static let gridSpacing: CGFloat = 50
+    static let dotSize: CGFloat = 1.2
+    static let portSize: CGFloat = 14
+    static let iconSize: CGFloat = 22
+    static let nodeMinWidth: CGFloat = 190
+    static let nodeMaxWidth: CGFloat = 210
+    static let wireLineWidth: CGFloat = 2.0
+    static let curveTension: CGFloat = 40
+    static let minSpeed: Double = 0.1
+    static let computationTolerance: Double = 1e-6
+}
+
+// MARK: - Machine Tier System
+struct MachineTier: Identifiable, Codable, Hashable {
+    let id: String
+    let name: String
+    let category: String
+    let speed: Double
+    let iconAsset: String?
+    
+    init(id: String, name: String, category: String, speed: Double, iconAsset: String? = nil) {
+        self.id = id
+        self.name = name
+        self.category = category
+        self.speed = speed
+        self.iconAsset = iconAsset
+    }
+}
+
+// MARK: - Default Machine Preferences
+class MachinePreferences: ObservableObject, Codable {
+    @Published var defaultTiers: [String: String] = [:]
+    
+    enum CodingKeys: CodingKey {
+        case defaultTiers
+    }
+    
+    init() {
+        // Set some sensible defaults
+        defaultTiers = [
+            "smelting": "electric-furnace",
+            "assembling": "assembling-3",
+            "mining": "electric-mining-drill"
+        ]
+    }
+    
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        defaultTiers = try container.decode([String: String].self, forKey: .defaultTiers)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(defaultTiers, forKey: .defaultTiers)
+    }
+    
+    func getDefaultTier(for category: String) -> String? {
+        return defaultTiers[category]
+    }
+    
+    func setDefaultTier(for category: String, tierID: String) {
+        defaultTiers[category] = tierID
+        savePreferences()
+    }
+    
+    private func savePreferences() {
+        // Save to UserDefaults
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(data, forKey: "MachinePreferences")
+        }
+    }
+    
+    static func load() -> MachinePreferences {
+        if let data = UserDefaults.standard.data(forKey: "MachinePreferences"),
+           let preferences = try? JSONDecoder().decode(MachinePreferences.self, from: data) {
+            return preferences
+        }
+        return MachinePreferences()
+    }
+}
+
+// Define machine tiers for each category
+let MACHINE_TIERS: [String: [MachineTier]] = [
+    "assembling": [
+        MachineTier(id: "assembling-1", name: "Assembling Machine 1", category: "assembling", speed: 0.5, iconAsset: "assembling_machine_1"),
+        MachineTier(id: "assembling-2", name: "Assembling Machine 2", category: "assembling", speed: 0.75, iconAsset: "assembling_machine_2"),
+        MachineTier(id: "assembling-3", name: "Assembling Machine 3", category: "assembling", speed: 1.25, iconAsset: "assembling_machine_3")
+    ],
+    "smelting": [
+        MachineTier(id: "stone-furnace", name: "Stone Furnace", category: "smelting", speed: 1.0, iconAsset: "stone_furnace"),
+        MachineTier(id: "steel-furnace", name: "Steel Furnace", category: "smelting", speed: 2.0, iconAsset: "steel_furnace"),
+        MachineTier(id: "electric-furnace", name: "Electric Furnace", category: "smelting", speed: 2.0, iconAsset: "electric_furnace")
+    ],
+    "chemistry": [
+        MachineTier(id: "chemical-plant", name: "Chemical Plant", category: "chemistry", speed: 1.0, iconAsset: "chemical_plant")
+    ],
+    "casting": [
+        MachineTier(id: "foundry", name: "Foundry", category: "casting", speed: 1.0, iconAsset: "foundry")
+    ],
+    "cryogenic": [
+        MachineTier(id: "cryogenic-plant", name: "Cryogenic Plant", category: "cryogenic", speed: 1.0, iconAsset: "cryogenic_plant")
+    ],
+    "biochamber": [
+        MachineTier(id: "biochamber", name: "Biochamber", category: "biochamber", speed: 1.0, iconAsset: "biochamber")
+    ],
+    "electromagnetic": [
+        MachineTier(id: "electromagnetic-plant", name: "Electromagnetic Plant", category: "electromagnetic", speed: 1.0, iconAsset: "electromagnetic_plant")
+    ],
+    "crushing": [
+        MachineTier(id: "crusher", name: "Crusher", category: "crushing", speed: 1.0, iconAsset: "crusher")
+    ],
+    "recycling": [
+        MachineTier(id: "recycler", name: "Recycler", category: "recycling", speed: 1.0, iconAsset: "recycler")
+    ],
+    "space-manufacturing": [
+        MachineTier(id: "space-platform", name: "Space Platform", category: "space-manufacturing", speed: 1.0, iconAsset: "space_platform_foundation")
+    ],
+    "centrifuging": [
+        MachineTier(id: "centrifuge", name: "Centrifuge", category: "centrifuging", speed: 1.0, iconAsset: "centrifuge")
+    ],
+    "rocket-building": [
+        MachineTier(id: "rocket-silo", name: "Rocket Silo", category: "rocket-building", speed: 1.0, iconAsset: "rocket_part")
+    ],
+    "mining": [
+        MachineTier(id: "burner-mining-drill", name: "Burner Mining Drill", category: "mining", speed: 0.25, iconAsset: "burner_mining_drill"),
+        MachineTier(id: "electric-mining-drill", name: "Electric Mining Drill", category: "mining", speed: 0.5, iconAsset: "electric_mining_drill"),
+        MachineTier(id: "big-mining-drill", name: "Big Mining Drill", category: "mining", speed: 2.0, iconAsset: "big_mining_drill")
+    ],
+    "quality": [
+        MachineTier(id: "quality-module", name: "Quality Module", category: "quality", speed: 1.0, iconAsset: "quality_module")
+    ]
+]
+
+// MARK: - Machine Count Formatting Helper
+func formatMachineCount(_ count: Double) -> String {
+    if count == floor(count) {
+        // Whole number - no decimal
+        return String(format: "%.0f", count)
+    } else {
+        // Has decimal - show one decimal place
+        return String(format: "%.1f", count)
+    }
+}
+
+// MARK: - Machine Name Helper
+func machineName(for category: String) -> String {
+    switch category {
+    case "assembling":
+        return "Assembling Machine"
+    case "smelting":
+        return "Furnace"
+    case "casting":
+        return "Foundry"
+    case "chemistry":
+        return "Chemical Plant"
+    case "cryogenic":
+        return "Cryogenic Plant"
+    case "biochamber":
+        return "Biochamber"
+    case "electromagnetic":
+        return "Electromagnetic Plant"
+    case "crushing":
+        return "Crusher"
+    case "recycling":
+        return "Recycler"
+    case "space-manufacturing":
+        return "Space Platform"
+    case "centrifuging":
+        return "Centrifuge"
+    case "rocket-building":
+        return "Rocket Silo"
+    case "mining":
+        return "Mining Drill"
+    case "quality":
+        return "Quality Module"
+    default:
+        return category.capitalized
+    }
+}
+
+// MARK: - Machine Count Helper
+func machineCount(for node: Node) -> Double {
+    guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+        return 0
+    }
+    
+    let outputAmount = recipe.outputs.values.first ?? 1
+    let craftsPerMin = (node.targetPerMin ?? 0) / outputAmount
+    let machines = (craftsPerMin * recipe.time) / 60.0 / max(Constants.minSpeed, node.speed)
+    
+    return machines
+}
+
+// MARK: - Port Connection Helper
+func isPortConnected(nodeID: UUID, item: String, side: IOSide, edges: [Edge]) -> Bool {
+    return edges.contains { edge in
+        switch side {
+        case .output:
+            return edge.fromNode == nodeID && edge.item == item
+        case .input:
+            return edge.toNode == nodeID && edge.item == item
+        }
+    }
+}
+
+func getSelectedMachineTier(for node: Node, preferences: MachinePreferences? = nil) -> MachineTier? {
+    guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }),
+          let tiers = MACHINE_TIERS[recipe.category] else {
+        return nil
+    }
+    
+    if let selectedTierID = node.selectedMachineTierID,
+       let tier = tiers.first(where: { $0.id == selectedTierID }) {
+        return tier
+    }
+    
+    // Check for default preference
+    if let prefs = preferences,
+       let defaultTierID = prefs.getDefaultTier(for: recipe.category),
+       let tier = tiers.first(where: { $0.id == defaultTierID }) {
+        return tier
+    }
+    
+    // Final fallback to first tier
+    return tiers.first
+}
+
+func getEffectiveSpeed(for node: Node) -> Double {
+    if let selectedTier = getSelectedMachineTier(for: node) {
+        return selectedTier.speed * node.speedMultiplier
+    }
+    return node.speedMultiplier
+}
+
+struct MachineIcon: View {
+    var node: Node
+    @EnvironmentObject var graph: GraphState
+    
+    var body: some View {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return AnyView(EmptyView())
+        }
+        
+        let selectedTier = getSelectedMachineTier(for: node)
+        let iconColor = machineIconColor(for: recipe.category)
+        
+        return AnyView(
+            Group {
+                if let tier = selectedTier, let assetName = tier.iconAsset {
+                    // Use actual machine icon
+                    Image(assetName)
+                        .renderingMode(.original)
+                        .resizable()
+                        .interpolation(.none)
+                        .scaledToFit()
+                } else if let assetName = ICON_ASSETS[recipe.category] {
+                    // Fallback to category icon
+                    Image(assetName)
+                        .renderingMode(.original)
+                        .resizable()
+                        .interpolation(.none)
+                        .scaledToFit()
+                } else {
+                    // Final fallback to SF Symbol
+                    Image(systemName: machineIconName(for: recipe.category))
+                        .font(.title2)
+                        .foregroundStyle(iconColor)
+                }
+            }
+            .frame(width: 50, height: 50)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(iconColor.opacity(0.3), lineWidth: 1)
+            )
+            .onTapGesture {
+                cycleMachineTier(for: node)
+            }
+            .hoverTooltip(selectedTier?.name ?? machineName(for: recipe.category))
+        )
+    }
+    
+    private func cycleMachineTier(for node: Node) {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }),
+              let tiers = MACHINE_TIERS[recipe.category],
+              tiers.count > 1 else {
+            return
+        }
+        
+        var updatedNode = node
+        
+        // Find current tier index
+        let currentIndex: Int
+        if let selectedTierID = node.selectedMachineTierID,
+           let index = tiers.firstIndex(where: { $0.id == selectedTierID }) {
+            currentIndex = index
+        } else {
+            currentIndex = 0
+        }
+        
+        // Cycle to next tier
+        let nextIndex = (currentIndex + 1) % tiers.count
+        let nextTier = tiers[nextIndex]
+        
+        updatedNode.selectedMachineTierID = nextTier.id
+        
+        graph.updateNode(updatedNode)
+    }
+    
+    private func machineIconName(for category: String) -> String {
+        switch category {
+        case "assembling":
+            return "gearshape.2"
+        case "smelting", "casting":
+            return "flame"
+        case "chemistry", "cryogenic":
+            return "flask"
+        case "biochamber":
+            return "leaf"
+        case "electromagnetic":
+            return "bolt"
+        case "crushing", "recycling":
+            return "hammer"
+        case "space-manufacturing":
+            return "sparkles"
+        case "centrifuging":
+            return "tornado"
+        case "rocket-building":
+            return "airplane"
+        case "mining":
+            return "cube"
+        case "quality":
+            return "star"
+        default:
+            return "gearshape"
+        }
+    }
+    
+    private func machineIconColor(for category: String) -> Color {
+        switch category {
+        case "assembling":
+            return .blue
+        case "smelting", "casting":
+            return .orange
+        case "chemistry", "cryogenic":
+            return .green
+        case "biochamber":
+            return Color.green
+        case "electromagnetic":
+            return .purple
+        case "crushing", "recycling":
+            return .gray
+        case "space-manufacturing":
+            return .cyan
+        case "centrifuging":
+            return .yellow
+        case "rocket-building":
+            return .red
+        case "mining":
+            return .brown
+        case "quality":
+            return .yellow
+        default:
+            return .secondary
+        }
+    }
+}
+
+// MARK: - Models
+struct Recipe: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    var category: String
+    var time: Double
+    var inputs: [String: Double]
+    var outputs: [String: Double]
+}
+
+let RECIPES: [Recipe] = [
+    // MARK: - Basic Resources & Smelting
+    Recipe(id: "iron-plate", name: "Iron Plate", category: "smelting", time: 3.2, inputs: ["Iron Ore": 1], outputs: ["Iron Plate": 1]),
+    Recipe(id: "copper-plate", name: "Copper Plate", category: "smelting", time: 3.2, inputs: ["Copper Ore": 1], outputs: ["Copper Plate": 1]),
+    Recipe(id: "steel-plate", name: "Steel Plate", category: "smelting", time: 16, inputs: ["Iron Plate": 5], outputs: ["Steel Plate": 1]),
+    Recipe(id: "stone-brick", name: "Stone Brick", category: "smelting", time: 3.2, inputs: ["Stone": 2], outputs: ["Stone Brick": 1]),
+    
+    // MARK: - Basic Components
+    Recipe(id: "copper-cable", name: "Copper Cable", category: "assembling", time: 0.5, inputs: ["Copper Plate": 1], outputs: ["Copper Cable": 2]),
+    Recipe(id: "iron-stick", name: "Iron Stick", category: "assembling", time: 0.5, inputs: ["Iron Plate": 1], outputs: ["Iron Stick": 2]),
+    Recipe(id: "iron-gear-wheel", name: "Iron Gear Wheel", category: "assembling", time: 0.5, inputs: ["Iron Plate": 2], outputs: ["Iron Gear Wheel": 1]),
+    Recipe(id: "pipe", name: "Pipe", category: "assembling", time: 0.5, inputs: ["Iron Plate": 1], outputs: ["Pipe": 1]),
+    Recipe(id: "engine-unit", name: "Engine Unit", category: "assembling", time: 10, inputs: ["Steel Plate": 1, "Iron Gear Wheel": 1, "Pipe": 2], outputs: ["Engine Unit": 1]),
+    Recipe(id: "electric-engine-unit", name: "Electric Engine Unit", category: "assembling", time: 10, inputs: ["Engine Unit": 1, "Electronic Circuit": 2, "Lubricant": 15], outputs: ["Electric Engine Unit": 1]),
+    
+    // MARK: - Circuits
+    Recipe(id: "electronic-circuit", name: "Electronic Circuit", category: "assembling", time: 0.5, inputs: ["Iron Plate": 1, "Copper Cable": 3], outputs: ["Electronic Circuit": 1]),
+    Recipe(id: "advanced-circuit", name: "Advanced Circuit", category: "assembling", time: 6, inputs: ["Electronic Circuit": 2, "Plastic Bar": 2, "Copper Cable": 4], outputs: ["Advanced Circuit": 1]),
+    Recipe(id: "processing-unit", name: "Processing Unit", category: "assembling", time: 10, inputs: ["Electronic Circuit": 20, "Advanced Circuit": 2, "Sulfuric Acid": 5], outputs: ["Processing Unit": 1]),
+    
+    // MARK: - Military
+    Recipe(id: "firearm-magazine", name: "Firearm Magazine", category: "assembling", time: 1, inputs: ["Iron Plate": 4], outputs: ["Firearm Magazine": 1]),
+    Recipe(id: "piercing-rounds-magazine", name: "Piercing Rounds Magazine", category: "assembling", time: 3, inputs: ["Firearm Magazine": 1, "Steel Plate": 1, "Copper Plate": 5], outputs: ["Piercing Rounds Magazine": 1]),
+    Recipe(id: "uranium-rounds-magazine", name: "Uranium Rounds Magazine", category: "assembling", time: 10, inputs: ["Piercing Rounds Magazine": 1, "Uranium-238": 1], outputs: ["Uranium Rounds Magazine": 1]),
+    Recipe(id: "grenade", name: "Grenade", category: "assembling", time: 8, inputs: ["Iron Plate": 5, "Coal": 10], outputs: ["Grenade": 1]),
+    Recipe(id: "wall", name: "Wall", category: "assembling", time: 0.5, inputs: ["Stone Brick": 5], outputs: ["Wall": 1]),
+    Recipe(id: "radar", name: "Radar", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 5, "Iron Gear Wheel": 5, "Iron Plate": 10], outputs: ["Radar": 1]),
+    
+    // MARK: - Transport & Logistics
+    Recipe(id: "transport-belt", name: "Transport Belt", category: "assembling", time: 0.5, inputs: ["Iron Plate": 1, "Iron Gear Wheel": 1], outputs: ["Transport Belt": 2]),
+    Recipe(id: "fast-transport-belt", name: "Fast Transport Belt", category: "assembling", time: 0.5, inputs: ["Iron Gear Wheel": 5, "Transport Belt": 1], outputs: ["Fast Transport Belt": 1]),
+    Recipe(id: "express-transport-belt", name: "Express Transport Belt", category: "assembling", time: 0.5, inputs: ["Iron Gear Wheel": 10, "Fast Transport Belt": 1, "Lubricant": 20], outputs: ["Express Transport Belt": 1]),
+    Recipe(id: "turbo-transport-belt", name: "Turbo Transport Belt", category: "assembling", time: 0.5, inputs: ["Express Transport Belt": 1, "Processing Unit": 1, "Tungsten Plate": 1], outputs: ["Turbo Transport Belt": 1]),
+    
+    Recipe(id: "underground-belt", name: "Underground Belt", category: "assembling", time: 1, inputs: ["Iron Plate": 10, "Transport Belt": 5], outputs: ["Underground Belt": 2]),
+    Recipe(id: "fast-underground-belt", name: "Fast Underground Belt", category: "assembling", time: 2, inputs: ["Iron Gear Wheel": 40, "Underground Belt": 2], outputs: ["Fast Underground Belt": 2]),
+    Recipe(id: "express-underground-belt", name: "Express Underground Belt", category: "assembling", time: 2, inputs: ["Iron Gear Wheel": 80, "Fast Underground Belt": 2, "Lubricant": 40], outputs: ["Express Underground Belt": 2]),
+    Recipe(id: "turbo-underground-belt", name: "Turbo Underground Belt", category: "assembling", time: 2, inputs: ["Express Underground Belt": 2, "Processing Unit": 2, "Tungsten Plate": 2], outputs: ["Turbo Underground Belt": 2]),
+    
+    Recipe(id: "splitter", name: "Splitter", category: "assembling", time: 1, inputs: ["Electronic Circuit": 5, "Iron Plate": 5, "Transport Belt": 4], outputs: ["Splitter": 1]),
+    Recipe(id: "fast-splitter", name: "Fast Splitter", category: "assembling", time: 2, inputs: ["Splitter": 1, "Iron Gear Wheel": 10, "Electronic Circuit": 10], outputs: ["Fast Splitter": 1]),
+    Recipe(id: "express-splitter", name: "Express Splitter", category: "assembling", time: 2, inputs: ["Fast Splitter": 1, "Iron Gear Wheel": 10, "Advanced Circuit": 10, "Lubricant": 80], outputs: ["Express Splitter": 1]),
+    Recipe(id: "turbo-splitter", name: "Turbo Splitter", category: "assembling", time: 2, inputs: ["Express Splitter": 1, "Processing Unit": 5, "Tungsten Plate": 5], outputs: ["Turbo Splitter": 1]),
+    
+    // MARK: - Inserters
+    Recipe(id: "burner-inserter", name: "Burner Inserter", category: "assembling", time: 0.5, inputs: ["Iron Plate": 1, "Iron Gear Wheel": 1], outputs: ["Burner Inserter": 1]),
+    Recipe(id: "inserter", name: "Inserter", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 1, "Iron Gear Wheel": 1, "Iron Plate": 1], outputs: ["Inserter": 1]),
+    Recipe(id: "long-handed-inserter", name: "Long-handed Inserter", category: "assembling", time: 0.5, inputs: ["Iron Gear Wheel": 1, "Iron Plate": 1, "Inserter": 1], outputs: ["Long-handed Inserter": 1]),
+    Recipe(id: "fast-inserter", name: "Fast Inserter", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 2, "Iron Plate": 2, "Inserter": 1], outputs: ["Fast Inserter": 1]),
+    Recipe(id: "bulk-inserter", name: "Bulk Inserter", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 15, "Iron Gear Wheel": 15, "Fast Inserter": 1], outputs: ["Bulk Inserter": 1]),
+    Recipe(id: "stack-inserter", name: "Stack Inserter", category: "assembling", time: 0.5, inputs: ["Advanced Circuit": 1, "Iron Gear Wheel": 15, "Fast Inserter": 1, "Jelly": 4], outputs: ["Stack Inserter": 1]),
+    Recipe(id: "filter-inserter", name: "Filter Inserter", category: "assembling", time: 0.5, inputs: ["Fast Inserter": 1, "Electronic Circuit": 4], outputs: ["Filter Inserter": 1]),
+    Recipe(id: "stack-filter-inserter", name: "Stack Filter Inserter", category: "assembling", time: 0.5, inputs: ["Stack Inserter": 1, "Electronic Circuit": 5], outputs: ["Stack Filter Inserter": 1]),
+    
+    // MARK: - Power
+    Recipe(id: "solar-panel", name: "Solar Panel", category: "assembling", time: 10, inputs: ["Steel Plate": 5, "Electronic Circuit": 15, "Copper Plate": 5], outputs: ["Solar Panel": 1]),
+    Recipe(id: "accumulator", name: "Accumulator", category: "assembling", time: 10, inputs: ["Iron Plate": 2, "Battery": 5], outputs: ["Accumulator": 1]),
+    Recipe(id: "steam-engine", name: "Steam Engine", category: "assembling", time: 0.5, inputs: ["Iron Gear Wheel": 8, "Pipe": 5, "Iron Plate": 10], outputs: ["Steam Engine": 1]),
+    Recipe(id: "boiler", name: "Boiler", category: "assembling", time: 0.5, inputs: ["Stone Furnace": 1, "Pipe": 4], outputs: ["Boiler": 1]),
+    Recipe(id: "steam-turbine", name: "Steam Turbine", category: "assembling", time: 3, inputs: ["Iron Gear Wheel": 50, "Copper Plate": 50, "Pipe": 20], outputs: ["Steam Turbine": 1]),
+    Recipe(id: "nuclear-reactor", name: "Nuclear Reactor", category: "assembling", time: 8, inputs: ["Concrete": 500, "Steel Plate": 500, "Advanced Circuit": 500, "Copper Plate": 500], outputs: ["Nuclear Reactor": 1]),
+    Recipe(id: "heat-pipe", name: "Heat Pipe", category: "assembling", time: 1, inputs: ["Steel Plate": 10, "Copper Plate": 20], outputs: ["Heat Pipe": 1]),
+    Recipe(id: "heat-exchanger", name: "Heat Exchanger", category: "assembling", time: 3, inputs: ["Steel Plate": 10, "Copper Plate": 100, "Pipe": 10], outputs: ["Heat Exchanger": 1]),
+    
+    // MARK: - Storage
+    Recipe(id: "wooden-chest", name: "Wooden Chest", category: "assembling", time: 0.5, inputs: ["Wood": 2], outputs: ["Wooden Chest": 1]),
+    Recipe(id: "iron-chest", name: "Iron Chest", category: "assembling", time: 0.5, inputs: ["Iron Plate": 8], outputs: ["Iron Chest": 1]),
+    Recipe(id: "steel-chest", name: "Steel Chest", category: "assembling", time: 0.5, inputs: ["Steel Plate": 8], outputs: ["Steel Chest": 1]),
+    Recipe(id: "storage-tank", name: "Storage Tank", category: "assembling", time: 3, inputs: ["Iron Plate": 20, "Steel Plate": 5], outputs: ["Storage Tank": 1]),
+    
+    // MARK: - Logistics Network
+    Recipe(id: "logistic-chest-passive-provider", name: "Passive Provider Chest", category: "assembling", time: 0.5, inputs: ["Steel Chest": 1, "Electronic Circuit": 3, "Advanced Circuit": 1], outputs: ["Passive Provider Chest": 1]),
+    Recipe(id: "logistic-chest-active-provider", name: "Active Provider Chest", category: "assembling", time: 0.5, inputs: ["Steel Chest": 1, "Electronic Circuit": 3, "Advanced Circuit": 1], outputs: ["Active Provider Chest": 1]),
+    Recipe(id: "logistic-chest-storage", name: "Storage Chest", category: "assembling", time: 0.5, inputs: ["Steel Chest": 1, "Electronic Circuit": 3, "Advanced Circuit": 1], outputs: ["Storage Chest": 1]),
+    Recipe(id: "logistic-chest-buffer", name: "Buffer Chest", category: "assembling", time: 0.5, inputs: ["Steel Chest": 1, "Electronic Circuit": 3, "Advanced Circuit": 1], outputs: ["Buffer Chest": 1]),
+    Recipe(id: "logistic-chest-requester", name: "Requester Chest", category: "assembling", time: 0.5, inputs: ["Steel Chest": 1, "Electronic Circuit": 3, "Advanced Circuit": 1], outputs: ["Requester Chest": 1]),
+    
+    Recipe(id: "logistic-robot", name: "Logistic Robot", category: "assembling", time: 0.5, inputs: ["Flying Robot Frame": 1, "Advanced Circuit": 2], outputs: ["Logistic Robot": 1]),
+    Recipe(id: "construction-robot", name: "Construction Robot", category: "assembling", time: 0.5, inputs: ["Flying Robot Frame": 1, "Electronic Circuit": 2], outputs: ["Construction Robot": 1]),
+    Recipe(id: "roboport", name: "Roboport", category: "assembling", time: 5, inputs: ["Steel Plate": 45, "Iron Gear Wheel": 45, "Advanced Circuit": 45], outputs: ["Roboport": 1]),
+    Recipe(id: "flying-robot-frame", name: "Flying Robot Frame", category: "assembling", time: 20, inputs: ["Electric Engine Unit": 1, "Battery": 2, "Steel Plate": 1, "Electronic Circuit": 3], outputs: ["Flying Robot Frame": 1]),
+    
+    // MARK: - Railway
+    Recipe(id: "rail", name: "Rail", category: "assembling", time: 0.5, inputs: ["Stone": 1, "Iron Stick": 1, "Steel Plate": 1], outputs: ["Rail": 2]),
+    Recipe(id: "train-stop", name: "Train Stop", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 5, "Iron Plate": 6, "Iron Stick": 6, "Steel Plate": 3], outputs: ["Train Stop": 1]),
+    Recipe(id: "rail-signal", name: "Rail Signal", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 1, "Iron Plate": 5], outputs: ["Rail Signal": 1]),
+    Recipe(id: "rail-chain-signal", name: "Rail Chain Signal", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 1, "Iron Plate": 5], outputs: ["Rail Chain Signal": 1]),
+    Recipe(id: "locomotive", name: "Locomotive", category: "assembling", time: 4, inputs: ["Engine Unit": 20, "Electronic Circuit": 10, "Steel Plate": 30], outputs: ["Locomotive": 1]),
+    Recipe(id: "cargo-wagon", name: "Cargo Wagon", category: "assembling", time: 1, inputs: ["Iron Gear Wheel": 10, "Iron Plate": 20, "Steel Plate": 20], outputs: ["Cargo Wagon": 1]),
+    Recipe(id: "fluid-wagon", name: "Fluid Wagon", category: "assembling", time: 1.5, inputs: ["Iron Gear Wheel": 10, "Steel Plate": 16, "Pipe": 8, "Storage Tank": 1], outputs: ["Fluid Wagon": 1]),
+    Recipe(id: "artillery-wagon", name: "Artillery Wagon", category: "assembling", time: 4, inputs: ["Engine Unit": 64, "Iron Gear Wheel": 10, "Steel Plate": 40, "Pipe": 16, "Advanced Circuit": 20], outputs: ["Artillery Wagon": 1]),
+    
+    // MARK: - Production Buildings
+    Recipe(id: "assembling-machine-1", name: "Assembling Machine 1", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 3, "Iron Gear Wheel": 5, "Iron Plate": 9], outputs: ["Assembling Machine 1": 1]),
+    Recipe(id: "assembling-machine-2", name: "Assembling Machine 2", category: "assembling", time: 0.5, inputs: ["Steel Plate": 2, "Electronic Circuit": 3, "Iron Gear Wheel": 5, "Assembling Machine 1": 1], outputs: ["Assembling Machine 2": 1]),
+    Recipe(id: "assembling-machine-3", name: "Assembling Machine 3", category: "assembling", time: 0.5, inputs: ["Speed Module": 4, "Assembling Machine 2": 2], outputs: ["Assembling Machine 3": 1]),
+    Recipe(id: "oil-refinery", name: "Oil Refinery", category: "assembling", time: 8, inputs: ["Steel Plate": 15, "Iron Gear Wheel": 10, "Stone Brick": 10, "Electronic Circuit": 10, "Pipe": 10], outputs: ["Oil Refinery": 1]),
+    Recipe(id: "chemical-plant", name: "Chemical Plant", category: "assembling", time: 5, inputs: ["Steel Plate": 5, "Iron Gear Wheel": 5, "Electronic Circuit": 5, "Pipe": 5], outputs: ["Chemical Plant": 1]),
+    Recipe(id: "centrifuge", name: "Centrifuge", category: "assembling", time: 4, inputs: ["Concrete": 100, "Steel Plate": 50, "Advanced Circuit": 100, "Iron Gear Wheel": 100], outputs: ["Centrifuge": 1]),
+    Recipe(id: "lab", name: "Lab", category: "assembling", time: 2, inputs: ["Electronic Circuit": 10, "Iron Gear Wheel": 10, "Transport Belt": 4], outputs: ["Lab": 1]),
+    Recipe(id: "beacon", name: "Beacon", category: "assembling", time: 15, inputs: ["Electronic Circuit": 20, "Advanced Circuit": 20, "Steel Plate": 10, "Copper Cable": 10], outputs: ["Beacon": 1]),
+    Recipe(id: "rocket-silo", name: "Rocket Silo", category: "assembling", time: 30, inputs: ["Steel Plate": 1000, "Concrete": 1000, "Pipe": 100, "Processing Unit": 200, "Electric Engine Unit": 200], outputs: ["Rocket Silo": 1]),
+    
+    // MARK: - Oil Processing
+    Recipe(id: "plastic-bar", name: "Plastic Bar", category: "chemistry", time: 1, inputs: ["Coal": 1, "Petroleum Gas": 20], outputs: ["Plastic Bar": 2]),
+    Recipe(id: "sulfur", name: "Sulfur", category: "chemistry", time: 1, inputs: ["Water": 30, "Petroleum Gas": 30], outputs: ["Sulfur": 2]),
+    Recipe(id: "sulfuric-acid", name: "Sulfuric Acid", category: "chemistry", time: 1, inputs: ["Iron Plate": 1, "Sulfur": 5, "Water": 100], outputs: ["Sulfuric Acid": 50]),
+    Recipe(id: "lubricant", name: "Lubricant", category: "chemistry", time: 1, inputs: ["Heavy Oil": 10], outputs: ["Lubricant": 10]),
+    Recipe(id: "battery", name: "Battery", category: "chemistry", time: 4, inputs: ["Iron Plate": 1, "Copper Plate": 1, "Sulfuric Acid": 20], outputs: ["Battery": 1]),
+    Recipe(id: "explosives", name: "Explosives", category: "chemistry", time: 4, inputs: ["Coal": 1, "Sulfur": 1, "Water": 10], outputs: ["Explosives": 2]),
+    
+    // MARK: - Fuel Processing
+    Recipe(id: "solid-fuel-from-light-oil", name: "Solid Fuel (Light Oil)", category: "chemistry", time: 2, inputs: ["Light Oil": 10], outputs: ["Solid Fuel": 1]),
+    Recipe(id: "solid-fuel-from-petroleum", name: "Solid Fuel (Petroleum)", category: "chemistry", time: 2, inputs: ["Petroleum Gas": 20], outputs: ["Solid Fuel": 1]),
+    Recipe(id: "solid-fuel-from-heavy-oil", name: "Solid Fuel (Heavy Oil)", category: "chemistry", time: 2, inputs: ["Heavy Oil": 20], outputs: ["Solid Fuel": 1]),
+    Recipe(id: "rocket-fuel", name: "Rocket Fuel", category: "assembling", time: 30, inputs: ["Solid Fuel": 10, "Light Oil": 10], outputs: ["Rocket Fuel": 1]),
+    Recipe(id: "nuclear-fuel", name: "Nuclear Fuel", category: "centrifuging", time: 90, inputs: ["Uranium-235": 1, "Rocket Fuel": 1], outputs: ["Nuclear Fuel": 1]),
+    
+    // MARK: - Advanced Materials
+    Recipe(id: "concrete", name: "Concrete", category: "assembling", time: 10, inputs: ["Stone Brick": 5, "Iron Ore": 1, "Water": 100], outputs: ["Concrete": 10]),
+    Recipe(id: "hazard-concrete", name: "Hazard Concrete", category: "assembling", time: 0.25, inputs: ["Concrete": 10], outputs: ["Hazard Concrete": 10]),
+    Recipe(id: "refined-concrete", name: "Refined Concrete", category: "assembling", time: 15, inputs: ["Concrete": 20, "Iron Stick": 8, "Steel Plate": 1, "Water": 100], outputs: ["Refined Concrete": 10]),
+    Recipe(id: "refined-hazard-concrete", name: "Refined Hazard Concrete", category: "assembling", time: 0.25, inputs: ["Refined Concrete": 10], outputs: ["Refined Hazard Concrete": 10]),
+    Recipe(id: "landfill", name: "Landfill", category: "assembling", time: 0.5, inputs: ["Stone": 50], outputs: ["Landfill": 1]),
+    Recipe(id: "cliff-explosives", name: "Cliff Explosives", category: "assembling", time: 8, inputs: ["Explosives": 10, "Grenade": 1], outputs: ["Cliff Explosives": 1]),
+    
+    // MARK: - Modules
+    Recipe(id: "speed-module", name: "Speed Module", category: "assembling", time: 15, inputs: ["Advanced Circuit": 5, "Electronic Circuit": 5], outputs: ["Speed Module": 1]),
+    Recipe(id: "speed-module-2", name: "Speed Module 2", category: "assembling", time: 30, inputs: ["Speed Module": 4, "Advanced Circuit": 5, "Processing Unit": 5], outputs: ["Speed Module 2": 1]),
+    Recipe(id: "speed-module-3", name: "Speed Module 3", category: "assembling", time: 60, inputs: ["Speed Module 2": 4, "Advanced Circuit": 5, "Processing Unit": 5], outputs: ["Speed Module 3": 1]),
+    
+    Recipe(id: "productivity-module", name: "Productivity Module", category: "assembling", time: 15, inputs: ["Advanced Circuit": 5, "Electronic Circuit": 5], outputs: ["Productivity Module": 1]),
+    Recipe(id: "productivity-module-2", name: "Productivity Module 2", category: "assembling", time: 30, inputs: ["Productivity Module": 4, "Advanced Circuit": 5, "Processing Unit": 5], outputs: ["Productivity Module 2": 1]),
+    Recipe(id: "productivity-module-3", name: "Productivity Module 3", category: "assembling", time: 60, inputs: ["Productivity Module 2": 4, "Advanced Circuit": 5, "Processing Unit": 5], outputs: ["Productivity Module 3": 1]),
+    
+    Recipe(id: "efficiency-module", name: "Efficiency Module", category: "assembling", time: 15, inputs: ["Advanced Circuit": 5, "Electronic Circuit": 5], outputs: ["Efficiency Module": 1]),
+    Recipe(id: "efficiency-module-2", name: "Efficiency Module 2", category: "assembling", time: 30, inputs: ["Efficiency Module": 4, "Advanced Circuit": 5, "Processing Unit": 5], outputs: ["Efficiency Module 2": 1]),
+    Recipe(id: "efficiency-module-3", name: "Efficiency Module 3", category: "assembling", time: 60, inputs: ["Efficiency Module 2": 4, "Advanced Circuit": 5, "Processing Unit": 5], outputs: ["Efficiency Module 3": 1]),
+    
+    // MARK: - Nuclear
+    Recipe(id: "uranium-processing", name: "Uranium Processing", category: "centrifuging", time: 12, inputs: ["Uranium Ore": 10], outputs: ["Uranium-235": 0.007, "Uranium-238": 0.993]),
+    Recipe(id: "kovarex-enrichment-process", name: "Kovarex Enrichment Process", category: "centrifuging", time: 60, inputs: ["Uranium-235": 40, "Uranium-238": 5], outputs: ["Uranium-235": 41, "Uranium-238": 2]),
+    Recipe(id: "uranium-fuel-cell", name: "Uranium Fuel Cell", category: "assembling", time: 10, inputs: ["Iron Plate": 10, "Uranium-235": 1, "Uranium-238": 19], outputs: ["Uranium Fuel Cell": 10]),
+    Recipe(id: "nuclear-fuel-reprocessing", name: "Nuclear Fuel Reprocessing", category: "centrifuging", time: 60, inputs: ["Used Up Uranium Fuel Cell": 5], outputs: ["Uranium-238": 3]),
+    
+    // MARK: - Science Packs
+    Recipe(id: "automation-science-pack", name: "Automation Science Pack", category: "assembling", time: 5, inputs: ["Copper Plate": 1, "Iron Gear Wheel": 1], outputs: ["Automation Science Pack": 1]),
+    Recipe(id: "logistic-science-pack", name: "Logistic Science Pack", category: "assembling", time: 6, inputs: ["Inserter": 1, "Transport Belt": 1], outputs: ["Logistic Science Pack": 1]),
+    Recipe(id: "military-science-pack", name: "Military Science Pack", category: "assembling", time: 10, inputs: ["Piercing Rounds Magazine": 1, "Grenade": 1, "Wall": 2], outputs: ["Military Science Pack": 2]),
+    Recipe(id: "chemical-science-pack", name: "Chemical Science Pack", category: "assembling", time: 24, inputs: ["Engine Unit": 2, "Advanced Circuit": 3, "Sulfur": 1], outputs: ["Chemical Science Pack": 2]),
+    Recipe(id: "production-science-pack", name: "Production Science Pack", category: "assembling", time: 21, inputs: ["Electric Furnace": 1, "Productivity Module": 1, "Rail": 30], outputs: ["Production Science Pack": 3]),
+    Recipe(id: "utility-science-pack", name: "Utility Science Pack", category: "assembling", time: 21, inputs: ["Low Density Structure": 3, "Processing Unit": 2, "Flying Robot Frame": 1], outputs: ["Utility Science Pack": 3]),
+    
+    // MARK: - Rocket Components
+    Recipe(id: "low-density-structure", name: "Low Density Structure", category: "assembling", time: 30, inputs: ["Steel Plate": 2, "Copper Plate": 20, "Plastic Bar": 5], outputs: ["Low Density Structure": 1]),
+    Recipe(id: "rocket-control-unit", name: "Rocket Control Unit", category: "assembling", time: 30, inputs: ["Processing Unit": 1, "Speed Module": 1], outputs: ["Rocket Control Unit": 1]),
+    Recipe(id: "rocket-part", name: "Rocket Part", category: "rocket-building", time: 3, inputs: ["Rocket Control Unit": 10, "Low Density Structure": 10, "Rocket Fuel": 10], outputs: ["Rocket Part": 1]),
+    Recipe(id: "satellite", name: "Satellite", category: "assembling", time: 5, inputs: ["Low Density Structure": 100, "Solar Panel": 100, "Accumulator": 100, "Radar": 5, "Processing Unit": 100, "Rocket Fuel": 50], outputs: ["Satellite": 1]),
+    
+    // MARK: - Space Age Content
+    // Vulcanus
+    Recipe(id: "tungsten-ore", name: "Tungsten Ore", category: "mining", time: 1, inputs: [:], outputs: ["Tungsten Ore": 1]),
+    Recipe(id: "tungsten-plate", name: "Tungsten Plate", category: "smelting", time: 10, inputs: ["Tungsten Ore": 4, "Sulfuric Acid": 10], outputs: ["Tungsten Plate": 1]),
+    Recipe(id: "tungsten-carbide", name: "Tungsten Carbide", category: "assembling", time: 1, inputs: ["Tungsten Plate": 2, "Carbon": 1], outputs: ["Tungsten Carbide": 1]),
+    Recipe(id: "carbon", name: "Carbon", category: "assembling", time: 1, inputs: ["Coal": 2, "Sulfuric Acid": 10], outputs: ["Carbon": 1]),
+    Recipe(id: "foundry", name: "Foundry", category: "assembling", time: 10, inputs: ["Steel Plate": 50, "Concrete": 20, "Electronic Circuit": 30, "Refined Concrete": 10, "Tungsten Carbide": 20], outputs: ["Foundry": 1]),
+    Recipe(id: "molten-iron", name: "Molten Iron", category: "casting", time: 32, inputs: ["Iron Ore": 50, "Calcite": 1], outputs: ["Molten Iron": 500]),
+    Recipe(id: "molten-copper", name: "Molten Copper", category: "casting", time: 32, inputs: ["Copper Ore": 50, "Calcite": 1], outputs: ["Molten Copper": 500]),
+    Recipe(id: "molten-iron-from-lava", name: "Molten Iron from Lava", category: "casting", time: 16, inputs: ["Lava": 500, "Calcite": 2], outputs: ["Molten Iron": 250, "Stone": 10]),
+    Recipe(id: "molten-copper-from-lava", name: "Molten Copper from Lava", category: "casting", time: 16, inputs: ["Lava": 500, "Calcite": 2], outputs: ["Molten Copper": 250, "Stone": 10]),
+    Recipe(id: "iron-plate-from-molten", name: "Iron Plate (Molten)", category: "casting", time: 3.2, inputs: ["Molten Iron": 10], outputs: ["Iron Plate": 1]),
+    Recipe(id: "copper-plate-from-molten", name: "Copper Plate (Molten)", category: "casting", time: 3.2, inputs: ["Molten Copper": 10], outputs: ["Copper Plate": 1]),
+    Recipe(id: "steel-plate-from-molten", name: "Steel Plate (Molten)", category: "casting", time: 3.2, inputs: ["Molten Iron": 30], outputs: ["Steel Plate": 1]),
+    Recipe(id: "calcite", name: "Calcite", category: "mining", time: 1, inputs: [:], outputs: ["Calcite": 1]),
+    Recipe(id: "lava-pumping", name: "Lava", category: "mining", time: 1, inputs: [:], outputs: ["Lava": 100]),
+    Recipe(id: "casting-copper-cable", name: "Casting Copper Cable", category: "casting", time: 0.5, inputs: ["Molten Copper": 5], outputs: ["Copper Cable": 2]),
+    Recipe(id: "casting-iron-gear-wheel", name: "Casting Iron Gear Wheel", category: "casting", time: 0.5, inputs: ["Molten Iron": 10], outputs: ["Iron Gear Wheel": 1]),
+    Recipe(id: "casting-iron-stick", name: "Casting Iron Stick", category: "casting", time: 0.5, inputs: ["Molten Iron": 5], outputs: ["Iron Stick": 2]),
+    Recipe(id: "casting-steel-plate", name: "Casting Steel Plate", category: "casting", time: 16, inputs: ["Molten Iron": 50], outputs: ["Steel Plate": 1]),
+    Recipe(id: "casting-low-density-structure", name: "Casting Low Density Structure", category: "casting", time: 15, inputs: ["Molten Copper": 200, "Molten Iron": 100, "Plastic Bar": 5], outputs: ["Low Density Structure": 1]),
+    Recipe(id: "casting-pipe", name: "Casting Pipe", category: "casting", time: 0.5, inputs: ["Molten Iron": 10], outputs: ["Pipe": 1]),
+    Recipe(id: "casting-pipe-to-ground", name: "Casting Pipe to Ground", category: "casting", time: 1, inputs: ["Molten Iron": 100], outputs: ["Pipe to Ground": 2]),
+    
+    // Fulgora
+    Recipe(id: "electromagnetic-plant", name: "Electromagnetic Plant", category: "assembling", time: 10, inputs: ["Steel Plate": 50, "Processing Unit": 50, "Refined Concrete": 10, "Holmium Plate": 50], outputs: ["Electromagnetic Plant": 1]),
+    Recipe(id: "superconductor", name: "Superconductor", category: "electromagnetic", time: 5, inputs: ["Copper Plate": 1, "Plastic Bar": 1, "Lightening-conductor": 1, "Holmium Plate": 1], outputs: ["Superconductor": 2]),
+    Recipe(id: "supercapacitor", name: "Supercapacitor", category: "electromagnetic", time: 10, inputs: ["Battery": 1, "Electronic Circuit": 2, "Holmium Plate": 4, "Superconductor": 2], outputs: ["Supercapacitor": 1]),
+    Recipe(id: "holmium-ore", name: "Holmium Ore", category: "mining", time: 1, inputs: [:], outputs: ["Holmium Ore": 1]),
+    Recipe(id: "holmium-plate", name: "Holmium Plate", category: "electromagnetic", time: 1, inputs: ["Holmium Ore": 2], outputs: ["Holmium Plate": 1]),
+    Recipe(id: "lightening-rod", name: "Lightning Rod", category: "assembling", time: 2, inputs: ["Copper Plate": 8, "Steel Plate": 4], outputs: ["Lightning Rod": 1]),
+    Recipe(id: "lightening-collector", name: "Lightning Collector", category: "assembling", time: 5, inputs: ["Lightning Rod": 2, "Supercapacitor": 12, "Superconductor": 24], outputs: ["Lightning Collector": 1]),
+    Recipe(id: "lightening-conductor", name: "Lightning Conductor", category: "assembling", time: 1, inputs: ["Copper Cable": 2, "Steel Plate": 1], outputs: ["Lightning Conductor": 2]),
+    Recipe(id: "scrap-recycling", name: "Scrap Recycling", category: "recycling", time: 0.2, inputs: ["Scrap": 1], outputs: ["Iron Gear Wheel": 0.20, "Concrete": 0.06, "Battery": 0.04, "Processing Unit": 0.02, "Low Density Structure": 0.01, "Solid Fuel": 0.07, "Steel Plate": 0.04, "Copper Cable": 0.03, "Stone": 0.04, "Iron Plate": 0.04, "Holmium Ore": 0.01]),
+    Recipe(id: "recycler", name: "Recycler", category: "assembling", time: 5, inputs: ["Steel Plate": 20, "Processing Unit": 6, "Iron Gear Wheel": 40, "Concrete": 20], outputs: ["Recycler": 1]),
+    
+    // Gleba
+    Recipe(id: "biochamber", name: "Biochamber", category: "assembling", time: 10, inputs: ["Iron Plate": 20, "Electronic Circuit": 5, "Landfill": 5, "Pentapod Egg": 1], outputs: ["Biochamber": 1]),
+    Recipe(id: "nutrients", name: "Nutrients", category: "biochamber", time: 2, inputs: ["Spoilage": 10, "Water": 10], outputs: ["Nutrients": 20]),
+    Recipe(id: "agricultural-science-pack", name: "Agricultural Science Pack", category: "biochamber", time: 6, inputs: ["Tree Seed": 2, "Nutrients": 10, "Bioflux": 1], outputs: ["Agricultural Science Pack": 1]),
+    Recipe(id: "pentapod-egg", name: "Pentapod Egg", category: "biochamber", time: 10, inputs: ["Nutrients": 20, "Water": 10], outputs: ["Pentapod Egg": 1]),
+    Recipe(id: "bioflux", name: "Bioflux", category: "biochamber", time: 4, inputs: ["Yumako Mash": 12, "Jellynut Paste": 12], outputs: ["Bioflux": 2]),
+    Recipe(id: "yumako", name: "Yumako", category: "biochamber", time: 60, inputs: ["Yumako Seed": 1, "Nutrients": 40, "Water": 40], outputs: ["Yumako": 20]),
+    Recipe(id: "jellynut", name: "Jellynut", category: "biochamber", time: 60, inputs: ["Jellynut Seed": 1, "Nutrients": 40, "Water": 40], outputs: ["Jellynut": 20]),
+    Recipe(id: "tree-seed", name: "Tree Seed", category: "biochamber", time: 4, inputs: ["Tree Seed": 1, "Nutrients": 5, "Water": 20], outputs: ["Tree Seed": 2, "Spoilage": 2]),
+    Recipe(id: "yumako-seed", name: "Yumako Seed", category: "biochamber", time: 2, inputs: ["Yumako": 1], outputs: ["Yumako Seed": 1, "Yumako Mash": 2]),
+    Recipe(id: "jellynut-seed", name: "Jellynut Seed", category: "biochamber", time: 2, inputs: ["Jellynut": 1], outputs: ["Jellynut Seed": 1, "Jellynut Paste": 2]),
+    Recipe(id: "yumako-mash", name: "Yumako Mash", category: "biochamber", time: 2, inputs: ["Yumako": 1], outputs: ["Yumako Mash": 4]),
+    Recipe(id: "jellynut-paste", name: "Jellynut Paste", category: "biochamber", time: 2, inputs: ["Jellynut": 1], outputs: ["Jellynut Paste": 4]),
+    Recipe(id: "jelly", name: "Jelly", category: "biochamber", time: 20, inputs: ["Jellynut Paste": 40, "Water": 20], outputs: ["Jelly": 20]),
+    Recipe(id: "spoilage", name: "Spoilage", category: "biochamber", time: 1, inputs: ["Biomass": 1], outputs: ["Spoilage": 1]),
+    Recipe(id: "biomass", name: "Biomass", category: "biochamber", time: 2, inputs: ["Jellynut": 1], outputs: ["Biomass": 4]),
+    Recipe(id: "biolab", name: "Biolab", category: "assembling", time: 20, inputs: ["Biochamber": 4, "Processing Unit": 16, "Jelly": 40, "Pentapod Egg": 5], outputs: ["Biolab": 1]),
+    Recipe(id: "bioplastic", name: "Bioplastic", category: "biochamber", time: 5, inputs: ["Yumako Mash": 10, "Jellynut Paste": 10], outputs: ["Plastic Bar": 2]),
+    Recipe(id: "biosulfur", name: "Biosulfur", category: "biochamber", time: 2, inputs: ["Yumako Mash": 5, "Bacteria": 5], outputs: ["Sulfur": 2]),
+    Recipe(id: "biolubricant", name: "Biolubricant", category: "biochamber", time: 2, inputs: ["Jellynut Paste": 10], outputs: ["Lubricant": 10]),
+    Recipe(id: "rocket-fuel-from-jelly", name: "Rocket Fuel from Jelly", category: "biochamber", time: 30, inputs: ["Jelly": 30], outputs: ["Rocket Fuel": 1]),
+    Recipe(id: "iron-bacteria-cultivation", name: "Iron Bacteria Cultivation", category: "biochamber", time: 4, inputs: ["Iron Bacteria": 1, "Nutrients": 10], outputs: ["Iron Ore": 1]),
+    Recipe(id: "copper-bacteria-cultivation", name: "Copper Bacteria Cultivation", category: "biochamber", time: 4, inputs: ["Copper Bacteria": 1, "Nutrients": 10], outputs: ["Copper Ore": 1]),
+    
+    // Aquilo
+    Recipe(id: "cryogenic-plant", name: "Cryogenic Plant", category: "assembling", time: 10, inputs: ["Steel Plate": 40, "Processing Unit": 20, "Refined Concrete": 12, "Pipeline": 10], outputs: ["Cryogenic Plant": 1]),
+    Recipe(id: "ice", name: "Ice", category: "mining", time: 1, inputs: [:], outputs: ["Ice": 1]),
+    Recipe(id: "ice-melting", name: "Ice Melting", category: "chemistry", time: 3, inputs: ["Ice": 1], outputs: ["Water": 20]),
+    Recipe(id: "ammonia", name: "Ammonia", category: "chemistry", time: 2, inputs: ["Nitrogen": 50, "Hydrogen": 100], outputs: ["Ammonia": 20]),
+    Recipe(id: "ammoniacal-solution", name: "Ammoniacal Solution", category: "chemistry", time: 2, inputs: ["Ammonia": 10, "Water": 10], outputs: ["Ammoniacal Solution": 10]),
+    Recipe(id: "lithium-ore", name: "Lithium Ore", category: "mining", time: 1, inputs: [:], outputs: ["Lithium Ore": 1]),
+    Recipe(id: "lithium-plate", name: "Lithium Plate", category: "chemistry", time: 4, inputs: ["Lithium Ore": 1, "Ammoniacal Solution": 20], outputs: ["Lithium Plate": 1]),
+    Recipe(id: "fusion-reactor", name: "Fusion Reactor", category: "assembling", time: 60, inputs: ["Processing Unit": 200, "Superconductor": 200, "Quantum Processor": 50, "Lithium Plate": 100, "Tungsten Plate": 100], outputs: ["Fusion Reactor": 1]),
+    Recipe(id: "fusion-power-cell", name: "Fusion Power Cell", category: "cryogenic", time: 10, inputs: ["Deuterium": 20, "Tritium": 20, "Lithium Plate": 1], outputs: ["Fusion Power Cell": 1]),
+    Recipe(id: "pipeline", name: "Pipeline", category: "assembling", time: 0.5, inputs: ["Iron Plate": 5, "Iron Gear Wheel": 5], outputs: ["Pipeline": 1]),
+    Recipe(id: "pipeline-to-ground", name: "Underground Pipeline", category: "assembling", time: 0.5, inputs: ["Pipeline": 10, "Iron Plate": 10], outputs: ["Underground Pipeline": 2]),
+    Recipe(id: "pump", name: "Pump", category: "assembling", time: 2, inputs: ["Engine Unit": 1, "Steel Plate": 1, "Pipe": 1], outputs: ["Pump": 1]),
+    Recipe(id: "solid-rocket-fuel", name: "Solid Rocket Fuel", category: "chemistry", time: 15, inputs: ["Iron Plate": 5, "Ammonia": 40, "Oxidizer": 20], outputs: ["Solid Rocket Fuel": 1]),
+    Recipe(id: "thruster-fuel", name: "Thruster Fuel", category: "chemistry", time: 10, inputs: ["Carbon": 2, "Water": 100], outputs: ["Thruster Fuel": 100]),
+    Recipe(id: "thruster-oxidizer", name: "Thruster Oxidizer", category: "chemistry", time: 10, inputs: ["Water": 100, "Iron Ore": 2], outputs: ["Thruster Oxidizer": 100]),
+    Recipe(id: "oxidizer", name: "Oxidizer", category: "chemistry", time: 2, inputs: ["Water": 100, "Iron Ore": 1], outputs: ["Oxidizer": 20]),
+    Recipe(id: "fluorine", name: "Fluorine", category: "chemistry", time: 4, inputs: ["Fluorite": 1, "Sulfuric Acid": 10], outputs: ["Fluorine": 10]),
+    Recipe(id: "fluorite", name: "Fluorite", category: "mining", time: 1, inputs: [:], outputs: ["Fluorite": 1]),
+    Recipe(id: "rocket-turret", name: "Rocket Turret", category: "assembling", time: 10, inputs: ["Steel Plate": 40, "Electronic Circuit": 10, "Iron Gear Wheel": 10, "Explosives": 4], outputs: ["Rocket Turret": 1]),
+    Recipe(id: "railgun-turret", name: "Railgun Turret", category: "assembling", time: 20, inputs: ["Steel Plate": 40, "Processing Unit": 20, "Superconductor": 10], outputs: ["Railgun Turret": 1]),
+    Recipe(id: "railgun-ammo", name: "Railgun Ammo", category: "assembling", time: 10, inputs: ["Steel Plate": 5, "Superconductor": 2, "Explosives": 1], outputs: ["Railgun Ammo": 1]),
+    Recipe(id: "rocket", name: "Rocket", category: "assembling", time: 8, inputs: ["Explosives": 1, "Iron Plate": 2], outputs: ["Rocket": 1]),
+    Recipe(id: "explosive-rocket", name: "Explosive Rocket", category: "assembling", time: 8, inputs: ["Rocket": 1, "Explosives": 2], outputs: ["Explosive Rocket": 1]),
+    Recipe(id: "solid-fuel-from-ammonia", name: "Solid Fuel from Ammonia", category: "cryogenic", time: 2, inputs: ["Ammonia": 20], outputs: ["Solid Fuel": 1]),
+    Recipe(id: "ammonia-rocket-fuel", name: "Ammonia Rocket Fuel", category: "cryogenic", time: 10, inputs: ["Ammonia": 40, "Iron Plate": 5, "Oxidizer": 20], outputs: ["Solid Rocket Fuel": 1]),
+    
+    // Space Platform
+    Recipe(id: "space-platform-foundation", name: "Space Platform Foundation", category: "assembling", time: 10, inputs: ["Steel Plate": 20, "Low Density Structure": 10], outputs: ["Space Platform Foundation": 1]),
+    Recipe(id: "asteroid-collector", name: "Asteroid Collector", category: "space-manufacturing", time: 10, inputs: ["Low Density Structure": 20, "Electric Engine Unit": 5, "Processing Unit": 5], outputs: ["Asteroid Collector": 1]),
+    Recipe(id: "crusher", name: "Crusher", category: "space-manufacturing", time: 10, inputs: ["Steel Plate": 10, "Iron Gear Wheel": 5, "Electric Engine Unit": 2], outputs: ["Crusher": 1]),
+    Recipe(id: "metallic-asteroid-crushing", name: "Metallic Asteroid Crushing", category: "crushing", time: 2, inputs: ["Metallic Asteroid": 1], outputs: ["Iron Ore": 20, "Copper Ore": 10, "Stone": 8]),
+    Recipe(id: "carbonic-asteroid-crushing", name: "Carbonic Asteroid Crushing", category: "crushing", time: 2, inputs: ["Carbonic Asteroid": 1], outputs: ["Carbon": 10, "Sulfur": 4, "Water": 20]),
+    Recipe(id: "oxide-asteroid-crushing", name: "Oxide Asteroid Crushing", category: "crushing", time: 2, inputs: ["Oxide Asteroid": 1], outputs: ["Ice": 10, "Calcite": 5, "Iron Ore": 5]),
+    Recipe(id: "advanced-metallic-asteroid-crushing", name: "Advanced Metallic Asteroid Crushing", category: "crushing", time: 5, inputs: ["Metallic Asteroid": 1], outputs: ["Iron Ore": 25, "Copper Ore": 12, "Stone": 10, "Holmium Ore": 1, "Tungsten Ore": 1]),
+    Recipe(id: "advanced-carbonic-asteroid-crushing", name: "Advanced Carbonic Asteroid Crushing", category: "crushing", time: 5, inputs: ["Carbonic Asteroid": 1], outputs: ["Carbon": 12, "Sulfur": 5, "Water": 25]),
+    Recipe(id: "advanced-oxide-asteroid-crushing", name: "Advanced Oxide Asteroid Crushing", category: "crushing", time: 5, inputs: ["Oxide Asteroid": 1], outputs: ["Ice": 12, "Calcite": 6, "Iron Ore": 6]),
+    Recipe(id: "promethium-asteroid-crushing", name: "Promethium Asteroid Crushing", category: "crushing", time: 10, inputs: ["Promethium Asteroid": 1], outputs: ["Promethium Ore": 4]),
+    Recipe(id: "space-platform-hub", name: "Space Platform Hub", category: "space-manufacturing", time: 60, inputs: ["Steel Plate": 200, "Processing Unit": 100, "Low Density Structure": 100, "Space Platform Foundation": 100], outputs: ["Space Platform Hub": 1]),
+    Recipe(id: "cargo-bay", name: "Cargo Bay", category: "space-manufacturing", time: 10, inputs: ["Steel Plate": 20, "Low Density Structure": 20, "Processing Unit": 5], outputs: ["Cargo Bay": 1]),
+    Recipe(id: "thruster", name: "Thruster", category: "space-manufacturing", time: 10, inputs: ["Steel Plate": 10, "Processing Unit": 10, "Electric Engine Unit": 5], outputs: ["Thruster": 1]),
+    
+    // Advanced Circuits & Processors
+    Recipe(id: "quantum-processor", name: "Quantum Processor", category: "assembling", time: 30, inputs: ["Processing Unit": 2, "Superconductor": 2, "Biter Neural Tissue": 1, "Tungsten Carbide": 1], outputs: ["Quantum Processor": 1]),
+    Recipe(id: "biter-neural-tissue", name: "Biter Neural Tissue", category: "biochamber", time: 20, inputs: ["Pentapod Egg": 10, "Nutrients": 20, "Bioflux": 2], outputs: ["Biter Neural Tissue": 1]),
+    
+    // Quality System
+    Recipe(id: "quality-module", name: "Quality Module", category: "assembling", time: 15, inputs: ["Electronic Circuit": 5, "Advanced Circuit": 5], outputs: ["Quality Module": 1]),
+    Recipe(id: "quality-module-2", name: "Quality Module 2", category: "assembling", time: 30, inputs: ["Quality Module": 4, "Advanced Circuit": 5, "Processing Unit": 5], outputs: ["Quality Module 2": 1]),
+    Recipe(id: "quality-module-3", name: "Quality Module 3", category: "assembling", time: 60, inputs: ["Quality Module 2": 4, "Advanced Circuit": 5, "Quantum Processor": 1], outputs: ["Quality Module 3": 1]),
+    
+    // Legendary Science
+    Recipe(id: "promethium-science-pack", name: "Promethium Science Pack", category: "assembling", time: 15, inputs: ["Promethium Ore": 2, "Quantum Processor": 1, "Biter Neural Tissue": 1], outputs: ["Promethium Science Pack": 1]),
+    
+    // Oil refining recipes
+    Recipe(id: "basic-oil-processing", name: "Basic Oil Processing", category: "chemistry", time: 5, inputs: ["Crude Oil": 100], outputs: ["Petroleum Gas": 45]),
+    Recipe(id: "advanced-oil-processing", name: "Advanced Oil Processing", category: "chemistry", time: 5, inputs: ["Crude Oil": 100, "Water": 50], outputs: ["Heavy Oil": 25, "Light Oil": 45, "Petroleum Gas": 55]),
+    Recipe(id: "coal-liquefaction", name: "Coal Liquefaction", category: "chemistry", time: 5, inputs: ["Coal": 10, "Heavy Oil": 25, "Steam": 50], outputs: ["Heavy Oil": 90, "Light Oil": 20, "Petroleum Gas": 10]),
+    Recipe(id: "heavy-oil-cracking", name: "Heavy Oil Cracking", category: "chemistry", time: 2, inputs: ["Heavy Oil": 40, "Water": 30], outputs: ["Light Oil": 30]),
+    Recipe(id: "light-oil-cracking", name: "Light Oil Cracking", category: "chemistry", time: 2, inputs: ["Light Oil": 30, "Water": 30], outputs: ["Petroleum Gas": 20]),
+    
+    // Furnaces
+    Recipe(id: "stone-furnace", name: "Stone Furnace", category: "assembling", time: 0.5, inputs: ["Stone": 5], outputs: ["Stone Furnace": 1]),
+    Recipe(id: "steel-furnace", name: "Steel Furnace", category: "assembling", time: 3, inputs: ["Steel Plate": 6, "Stone Brick": 10], outputs: ["Steel Furnace": 1]),
+    Recipe(id: "electric-furnace", name: "Electric Furnace", category: "assembling", time: 5, inputs: ["Steel Plate": 10, "Advanced Circuit": 5, "Stone Brick": 10], outputs: ["Electric Furnace": 1]),
+    
+    // Mining drills
+    Recipe(id: "burner-mining-drill", name: "Burner Mining Drill", category: "assembling", time: 2, inputs: ["Iron Gear Wheel": 3, "Stone Furnace": 1, "Iron Plate": 3], outputs: ["Burner Mining Drill": 1]),
+    Recipe(id: "electric-mining-drill", name: "Electric Mining Drill", category: "assembling", time: 2, inputs: ["Electronic Circuit": 3, "Iron Gear Wheel": 5, "Iron Plate": 10], outputs: ["Electric Mining Drill": 1]),
+    Recipe(id: "big-mining-drill", name: "Big Mining Drill", category: "assembling", time: 30, inputs: ["Electric Mining Drill": 10, "Electric Engine Unit": 10, "Advanced Circuit": 10, "Tungsten Carbide": 10, "Molten Iron": 200], outputs: ["Big Mining Drill": 1]),
+    Recipe(id: "offshore-pump", name: "Offshore Pump", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 2, "Pipe": 1, "Iron Gear Wheel": 1], outputs: ["Offshore Pump": 1]),
+    Recipe(id: "pumpjack", name: "Pumpjack", category: "assembling", time: 5, inputs: ["Steel Plate": 5, "Iron Gear Wheel": 10, "Electronic Circuit": 5, "Pipe": 10], outputs: ["Pumpjack": 1]),
+    
+    // Miscellaneous
+    Recipe(id: "repair-pack", name: "Repair Pack", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 2, "Iron Gear Wheel": 2], outputs: ["Repair Pack": 1]),
+    Recipe(id: "uranium-cannon-shell", name: "Uranium Cannon Shell", category: "assembling", time: 12, inputs: ["Cannon Shell": 1, "Uranium-238": 1], outputs: ["Uranium Cannon Shell": 1]),
+    Recipe(id: "explosive-uranium-cannon-shell", name: "Explosive Uranium Cannon Shell", category: "assembling", time: 12, inputs: ["Explosive Cannon Shell": 1, "Uranium-238": 1], outputs: ["Explosive Uranium Cannon Shell": 1]),
+    Recipe(id: "artillery-shell", name: "Artillery Shell", category: "assembling", time: 15, inputs: ["Explosive Cannon Shell": 4, "Radar": 1, "Explosives": 8], outputs: ["Artillery Shell": 1]),
+    Recipe(id: "poison-capsule", name: "Poison Capsule", category: "assembling", time: 8, inputs: ["Steel Plate": 3, "Electronic Circuit": 3, "Coal": 10], outputs: ["Poison Capsule": 1]),
+    Recipe(id: "slowdown-capsule", name: "Slowdown Capsule", category: "assembling", time: 8, inputs: ["Steel Plate": 2, "Electronic Circuit": 2, "Coal": 5], outputs: ["Slowdown Capsule": 1]),
+    Recipe(id: "defender-capsule", name: "Defender Capsule", category: "assembling", time: 8, inputs: ["Piercing Rounds Magazine": 3, "Electronic Circuit": 3, "Iron Gear Wheel": 3], outputs: ["Defender Capsule": 1]),
+    Recipe(id: "distractor-capsule", name: "Distractor Capsule", category: "assembling", time: 15, inputs: ["Defender Capsule": 4, "Advanced Circuit": 3], outputs: ["Distractor Capsule": 1]),
+    Recipe(id: "destroyer-capsule", name: "Destroyer Capsule", category: "assembling", time: 15, inputs: ["Distractor Capsule": 4, "Speed Module": 1], outputs: ["Destroyer Capsule": 1]),
+    Recipe(id: "light-armor", name: "Light Armor", category: "assembling", time: 3, inputs: ["Iron Plate": 40], outputs: ["Light Armor": 1]),
+    Recipe(id: "heavy-armor", name: "Heavy Armor", category: "assembling", time: 8, inputs: ["Copper Plate": 100, "Steel Plate": 50], outputs: ["Heavy Armor": 1]),
+    Recipe(id: "modular-armor", name: "Modular Armor", category: "assembling", time: 15, inputs: ["Advanced Circuit": 30, "Steel Plate": 50], outputs: ["Modular Armor": 1]),
+    Recipe(id: "power-armor", name: "Power Armor", category: "assembling", time: 20, inputs: ["Processing Unit": 40, "Electric Engine Unit": 20, "Steel Plate": 40], outputs: ["Power Armor": 1]),
+    Recipe(id: "power-armor-mk2", name: "Power Armor MK2", category: "assembling", time: 25, inputs: ["Efficiency Module 2": 25, "Speed Module 2": 25, "Processing Unit": 60, "Electric Engine Unit": 40, "Low Density Structure": 30], outputs: ["Power Armor MK2": 1]),
+    Recipe(id: "flamethrower-ammo", name: "Flamethrower Ammo", category: "chemistry", time: 6, inputs: ["Steel Plate": 5, "Crude Oil": 100], outputs: ["Flamethrower Ammo": 100]),
+    Recipe(id: "cannon-shell", name: "Cannon Shell", category: "assembling", time: 8, inputs: ["Steel Plate": 2, "Plastic Bar": 2, "Explosives": 1], outputs: ["Cannon Shell": 1]),
+    Recipe(id: "explosive-cannon-shell", name: "Explosive Cannon Shell", category: "assembling", time: 8, inputs: ["Steel Plate": 2, "Plastic Bar": 2, "Explosives": 2], outputs: ["Explosive Cannon Shell": 1]),
+    
+    // Additional Space Age items
+    Recipe(id: "deuterium", name: "Deuterium", category: "chemistry", time: 10, inputs: ["Hydrogen": 100], outputs: ["Deuterium": 1]),
+    Recipe(id: "tritium", name: "Tritium", category: "chemistry", time: 10, inputs: ["Deuterium": 10, "Lithium Plate": 1], outputs: ["Tritium": 1]),
+    Recipe(id: "hydrogen", name: "Hydrogen", category: "chemistry", time: 2, inputs: ["Water": 100], outputs: ["Hydrogen": 100]),
+    Recipe(id: "nitrogen", name: "Nitrogen", category: "chemistry", time: 2, inputs: ["Air": 100], outputs: ["Nitrogen": 50]),
+    Recipe(id: "air-separation", name: "Air Separation", category: "chemistry", time: 2, inputs: [:], outputs: ["Nitrogen": 50, "Oxygen": 50])
+]
+
+// MARK: - Icon Assets Mapping
+let ICON_ASSETS: [String: String] = [
+    // Basic Resources
+    "Iron Plate": "iron_plate",
+    "Copper Plate": "copper_plate",
+    "Steel Plate": "steel_plate",
+    "Stone Brick": "stone_brick",
+    "Coal": "coal",
+    "Iron Ore": "iron_ore",
+    "Copper Ore": "copper_ore",
+    "Stone": "stone",
+    "Wood": "wood",
+    "Uranium Ore": "uranium_ore",
+    "Uranium-235": "uranium_235",
+    "Uranium-238": "uranium_238",
+    "Water": "water",
+    "Steam": "steam",
+    "Crude Oil": "crude_oil",
+    "Heavy Oil": "heavy_oil",
+    "Light Oil": "light_oil",
+    "Petroleum Gas": "petroleum_gas",
+    
+    // Basic Components
+    "Copper Cable": "copper_cable",
+    "Iron Stick": "iron_stick",
+    "Iron Gear Wheel": "iron_gear_wheel",
+    "Pipe": "pipe",
+    "Engine Unit": "engine_unit",
+    "Electric Engine Unit": "electric_engine_unit",
+    
+    // Circuits
+    "Electronic Circuit": "electronic_circuit",
+    "Advanced Circuit": "advanced_circuit",
+    "Processing Unit": "processing_unit",
+    
+    // Transport & Logistics
+    "Transport Belt": "transport_belt",
+    "Fast Transport Belt": "fast_transport_belt",
+    "Express Transport Belt": "express_transport_belt",
+    "Turbo Transport Belt": "turbo_transport_belt",
+    "Underground Belt": "underground_belt",
+    "Fast Underground Belt": "fast_underground_belt",
+    "Express Underground Belt": "express_underground_belt",
+    "Turbo Underground Belt": "turbo_underground_belt",
+    "Splitter": "splitter",
+    "Fast Splitter": "fast_splitter",
+    "Express Splitter": "express_splitter",
+    "Turbo Splitter": "turbo_splitter",
+    
+    // Inserters
+    "Burner Inserter": "burner_inserter",
+    "Inserter": "inserter",
+    "Long-handed Inserter": "long_handed_inserter",
+    "Fast Inserter": "fast_inserter",
+    "Bulk Inserter": "bulk_inserter",
+    "Stack Inserter": "stack_inserter",
+    "Filter Inserter": "filter_inserter",
+    "Stack Filter Inserter": "stack_filter_inserter",
+    
+    // Power
+    "Solar Panel": "solar_panel",
+    "Accumulator": "accumulator",
+    "Steam Engine": "steam_engine",
+    "Steam Turbine": "steam_turbine",
+    "Boiler": "boiler",
+    "Nuclear Reactor": "nuclear_reactor",
+    "Heat Pipe": "heat_pipe",
+    "Heat Exchanger": "heat_exchanger",
+    "Offshore Pump": "offshore_pump",
+    "Pump": "pump",
+    "Pumpjack": "pumpjack",
+    
+    // Storage
+    "Wooden Chest": "wooden_chest",
+    "Iron Chest": "iron_chest",
+    "Steel Chest": "steel_chest",
+    "Storage Tank": "storage_tank",
+    "Passive Provider Chest": "passive_provider_chest",
+    "Active Provider Chest": "active_provider_chest",
+    "Storage Chest": "storage_chest",
+    "Buffer Chest": "buffer_chest",
+    "Requester Chest": "requester_chest",
+    
+    // Logistics Network
+    "Logistic Robot": "logistic_robot",
+    "Construction Robot": "construction_robot",
+    "Roboport": "roboport",
+    "Flying Robot Frame": "flying_robot_frame",
+    
+    // Railway
+    "Rail": "rail",
+    "Train Stop": "train_stop",
+    "Rail Signal": "rail_signal",
+    "Rail Chain Signal": "rail_chain_signal",
+    "Locomotive": "locomotive",
+    "Cargo Wagon": "cargo_wagon",
+    "Fluid Wagon": "fluid_wagon",
+    "Artillery Wagon": "artillery_wagon",
+    
+    // Production Buildings
+    "Assembling Machine 1": "assembling_machine_1",
+    "Assembling Machine 2": "assembling_machine_2",
+    "Assembling Machine 3": "assembling_machine_3",
+    "Oil Refinery": "oil_refinery",
+    "Chemical Plant": "chemical_plant",
+    "Centrifuge": "centrifuge",
+    "Lab": "lab",
+    "Beacon": "beacon",
+    "Rocket Silo": "rocket_silo",
+    "Stone Furnace": "stone_furnace",
+    "Steel Furnace": "steel_furnace",
+    "Electric Furnace": "electric_furnace",
+    "Burner Mining Drill": "burner_mining_drill",
+    "Electric Mining Drill": "electric_mining_drill",
+    "Big Mining Drill": "big_mining_drill",
+    
+    // Oil Processing Products
+    "Plastic Bar": "plastic_bar",
+    "Sulfur": "sulfur",
+    "Sulfuric Acid": "sulfuric_acid",
+    "Lubricant": "lubricant",
+    "Battery": "battery",
+    "Explosives": "explosives",
+    "Solid Fuel": "solid_fuel",
+    "Rocket Fuel": "rocket_fuel",
+    "Nuclear Fuel": "nuclear_fuel",
+    
+    // Advanced Materials
+    "Concrete": "concrete",
+    "Hazard Concrete": "hazard_concrete",
+    "Refined Concrete": "refined_concrete",
+    "Refined Hazard Concrete": "refined_hazard_concrete",
+    "Landfill": "landfill",
+    "Cliff Explosives": "cliff_explosives",
+    
+    // Modules
+    "Speed Module": "speed_module",
+    "Speed Module 2": "speed_module_2",
+    "Speed Module 3": "speed_module_3",
+    "Productivity Module": "productivity_module",
+    "Productivity Module 2": "productivity_module_2",
+    "Productivity Module 3": "productivity_module_3",
+    "Efficiency Module": "efficiency_module",
+    "Efficiency Module 2": "efficiency_module_2",
+    "Efficiency Module 3": "efficiency_module_3",
+    "Quality Module": "quality_module",
+    "Quality Module 2": "quality_module_2",
+    "Quality Module 3": "quality_module_3",
+    
+    // Nuclear
+    "Uranium Fuel Cell": "uranium_fuel_cell",
+    "Used Up Uranium Fuel Cell": "used_up_uranium_fuel_cell",
+    
+    // Science Packs
+    "Automation Science Pack": "automation_science_pack",
+    "Logistic Science Pack": "logistic_science_pack",
+    "Military Science Pack": "military_science_pack",
+    "Chemical Science Pack": "chemical_science_pack",
+    "Production Science Pack": "production_science_pack",
+    "Utility Science Pack": "utility_science_pack",
+    "Space Science Pack": "space_science_pack",
+    "Agricultural Science Pack": "agricultural_science_pack",
+    "Promethium Science Pack": "promethium_science_pack",
+    
+    // Rocket Components
+    "Low Density Structure": "low_density_structure",
+    "Rocket Control Unit": "rocket_control_unit",
+    "Rocket Part": "rocket_part",
+    "Satellite": "satellite",
+    
+    // Military
+    "Firearm Magazine": "firearm_magazine",
+    "Piercing Rounds Magazine": "piercing_rounds_magazine",
+    "Uranium Rounds Magazine": "uranium_rounds_magazine",
+    "Grenade": "grenade",
+    "Wall": "wall",
+    "Radar": "radar",
+    "Rocket": "rocket",
+    "Explosive Rocket": "explosive_rocket",
+    "Cannon Shell": "cannon_shell",
+    "Explosive Cannon Shell": "explosive_cannon_shell",
+    "Uranium Cannon Shell": "uranium_cannon_shell",
+    "Explosive Uranium Cannon Shell": "explosive_uranium_cannon_shell",
+    "Artillery Shell": "artillery_shell",
+    "Flamethrower Ammo": "flamethrower_ammo",
+    "Poison Capsule": "poison_capsule",
+    "Slowdown Capsule": "slowdown_capsule",
+    "Defender Capsule": "defender_capsule",
+    "Distractor Capsule": "distractor_capsule",
+    "Destroyer Capsule": "destroyer_capsule",
+    
+    // Armor
+    "Light Armor": "light_armor",
+    "Heavy Armor": "heavy_armor",
+    "Modular Armor": "modular_armor",
+    "Power Armor": "power_armor",
+    "Power Armor MK2": "power_armor_mk2",
+    
+    // Space Age - Vulcanus
+    "Tungsten Ore": "tungsten_ore",
+    "Tungsten Plate": "tungsten_plate",
+    "Tungsten Carbide": "tungsten_carbide",
+    "Carbon": "carbon",
+    "Foundry": "foundry",
+    "Molten Iron": "molten_iron",
+    "Molten Copper": "molten_copper",
+    "Calcite": "calcite",
+    "Lava": "lava",
+    
+    // Space Age - Fulgora
+    "Electromagnetic Plant": "electromagnetic_plant",
+    "Superconductor": "superconductor",
+    "Supercapacitor": "supercapacitor",
+    "Holmium Ore": "holmium_ore",
+    "Holmium Plate": "holmium_plate",
+    "Lightning Rod": "lightning_rod",
+    "Lightning Collector": "lightning_collector",
+    "Lightning Conductor": "lightning_conductor",
+    "Scrap": "scrap",
+    "Recycler": "recycler",
+    
+    // Space Age - Gleba
+    "Biochamber": "biochamber",
+    "Nutrients": "nutrients",
+    "Pentapod Egg": "pentapod_egg",
+    "Bioflux": "bioflux",
+    "Yumako": "yumako",
+    "Jellynut": "jellynut",
+    "Tree Seed": "tree_seed",
+    "Yumako Seed": "yumako_seed",
+    "Jellynut Seed": "jellynut_seed",
+    "Yumako Mash": "yumako_mash",
+    "Jellynut Paste": "jellynut_paste",
+    "Jelly": "jelly",
+    "Spoilage": "spoilage",
+    "Biomass": "biomass",
+    "Biolab": "biolab",
+    "Biter Neural Tissue": "biter_neural_tissue",
+    
+    // Space Age - Aquilo
+    "Cryogenic Plant": "cryogenic_plant",
+    "Ice": "ice",
+    "Ammonia": "ammonia",
+    "Ammoniacal Solution": "ammoniacal_solution",
+    "Lithium Ore": "lithium_ore",
+    "Lithium Plate": "lithium_plate",
+    "Fusion Reactor": "fusion_reactor",
+    "Fusion Power Cell": "fusion_power_cell",
+    "Pipeline": "pipeline",
+    "Underground Pipeline": "pipeline_to_ground",
+    "Solid Rocket Fuel": "solid_rocket_fuel",
+    "Thruster Fuel": "thruster_fuel",
+    "Thruster Oxidizer": "thruster_oxidizer",
+    "Oxidizer": "oxidizer",
+    "Fluorine": "fluorine",
+    "Fluorite": "fluorite",
+    "Rocket Turret": "rocket_turret",
+    "Railgun Turret": "railgun_turret",
+    "Railgun Ammo": "railgun_ammo",
+    "Deuterium": "deuterium",
+    "Tritium": "tritium",
+    "Hydrogen": "hydrogen",
+    "Nitrogen": "nitrogen",
+    "Oxygen": "oxygen",
+    "Air": "air",
+    
+    // Space Platform
+    "Space Platform Foundation": "space_platform_foundation",
+    "Asteroid Collector": "asteroid_collector",
+    "Crusher": "crusher",
+    "Metallic Asteroid": "metallic_asteroid",
+    "Carbonic Asteroid": "carbonic_asteroid",
+    "Oxide Asteroid": "oxide_asteroid",
+    "Promethium Asteroid": "promethium_asteroid",
+    "Promethium Ore": "promethium_ore",
+    "Space Platform Hub": "space_platform_hub",
+    "Cargo Bay": "cargo_bay",
+    "Thruster": "thruster",
+    
+    // Advanced Components
+    "Quantum Processor": "quantum_processor",
+    
+    // Miscellaneous
+    "Repair Pack": "repair_pack",
+    
+    // Machine categories for center icons
+    "assembling": "assembling_machine_3",
+    "smelting": "electric_furnace",
+    "chemistry": "chemical_plant",
+    "biochamber": "biochamber",
+    "electromagnetic": "electromagnetic_plant",
+    "casting": "foundry",
+    "cryogenic": "cryogenic_plant",
+    "crushing": "crusher",
+    "recycling": "recycler",
+    "space-manufacturing": "space_platform_foundation",
+    "centrifuging": "centrifuge",
+    "rocket-building": "rocket_silo",
+    "mining": "electric_mining_drill",
+    "quality": "quality_module"
+]
+
+// MARK: - Alternative Recipe IDs
+private let ALTERNATIVE_RECIPE_IDS: Set<String> = [
+    // Alternative oil processing
+    "solid-fuel-from-petroleum",
+    "solid-fuel-from-heavy-oil",
+    
+    // Alternative molten metal recipes
+    "iron-plate-from-molten",
+    "copper-plate-from-molten",
+    "steel-plate-from-molten",
+    "molten-iron-from-lava",
+    "molten-copper-from-lava",
+    "casting-copper-cable",
+    "casting-iron-gear-wheel",
+    "casting-iron-stick",
+    "casting-steel-plate",
+    "casting-low-density-structure",
+    "casting-pipe",
+    "casting-pipe-to-ground",
+    
+    // Advanced asteroid crushing
+    "advanced-metallic-asteroid-crushing",
+    "advanced-carbonic-asteroid-crushing",
+    "advanced-oxide-asteroid-crushing",
+    
+    // Biochamber alternatives
+    "bioplastic",
+    "biosulfur",
+    "biolubricant",
+    "rocket-fuel-from-jelly",
+    "iron-bacteria-cultivation",
+    "copper-bacteria-cultivation",
+    
+    // Cryogenic alternatives
+    "solid-fuel-from-ammonia",
+    "ammonia-rocket-fuel"
+
+    // Add other alternative science pack recipes here if applicable
+]
+
+// MARK: - Alternative Recipe Management
+private func isAlternativeRecipe(_ recipe: Recipe) -> Bool {
+    return ALTERNATIVE_RECIPE_IDS.contains(recipe.id)
+}
+let ITEM_TO_PRODUCERS: [String: [Recipe]] = {
+    var mapping: [String: [Recipe]] = [:]
+    for recipe in RECIPES {
+        for (outputItem, _) in recipe.outputs {
+            mapping[outputItem, default: []].append(recipe)
+        }
+    }
+    return mapping
+}()
+
+let ITEM_TO_CONSUMERS: [String: [Recipe]] = {
+    var mapping: [String: [Recipe]] = [:]
+    for recipe in RECIPES {
+        for (inputItem, _) in recipe.inputs {
+            mapping[inputItem, default: []].append(recipe)
+        }
+    }
+    return mapping
+}()
+
+enum IOSide: String, Codable, CaseIterable {
+    case input, output
+    
+    var opposite: IOSide {
+        switch self {
+        case .input: return .output
+        case .output: return .input
+        }
+    }
+}
+
+struct Node: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var recipeID: String
+    var x: CGFloat
+    var y: CGFloat
+    var targetPerMin: Double?
+    var speedMultiplier: Double
+    var selectedMachineTierID: String?
+
+    init(recipeID: String, x: CGFloat, y: CGFloat, targetPerMin: Double? = nil, speedMultiplier: Double? = nil) {
+        self.recipeID = recipeID
+        self.x = x
+        self.y = y
+        self.targetPerMin = targetPerMin
+
+        // Default speed logic
+        if let recipe = RECIPES.first(where: { $0.id == recipeID }), recipe.category == "cryogenic" {
+            self.speedMultiplier = speedMultiplier ?? 2.0
+        } else {
+            self.speedMultiplier = speedMultiplier ?? 1.0
+        }
+    }
+    
+    // Computed property for effective speed (machine tier speed * multiplier)
+    var speed: Double {
+        return getEffectiveSpeed(for: self)
+    }
+}
+
+struct Edge: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var fromNode: UUID
+    var toNode: UUID
+    var item: String
+    
+    init(fromNode: UUID, toNode: UUID, item: String) {
+        self.fromNode = fromNode
+        self.toNode = toNode
+        self.item = item
+    }
+}
+
+struct PortKey: Hashable, Codable {
+    var nodeID: UUID
+    var item: String
+    var side: IOSide
+}
+
+// MARK: - State Management
+final class GraphState: ObservableObject, Codable {
+    enum CodingKeys: CodingKey {
+        case nodes, edges
+    }
+    
+    enum Aggregate: String, CaseIterable {
+        case max = "Max"
+        case sum = "Sum"
+    }
+    
+    @Published var nodes: [UUID: Node] = [:]
+    @Published var edges: [Edge] = []
+    @Published var dragging: DragContext? = nil
+    @Published var showPicker = false
+    @Published var pickerContext: PickerContext? = nil
+    @Published var showGeneralPicker = false
+    @Published var generalPickerDropPoint: CGPoint = .zero
+    @Published var aggregate: Aggregate = .max
+    @Published var portFrames: [PortKey: CGRect] = [:]
+    
+    private var isComputing = false
+    private var pendingCompute = false
+    
+    init() {}
+    
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let nodeArray = try container.decode([Node].self, forKey: .nodes)
+        self.nodes = Dictionary(uniqueKeysWithValues: nodeArray.map { ($0.id, $0) })
+        self.edges = try container.decode([Edge].self, forKey: .edges)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Array(nodes.values), forKey: .nodes)
+        try container.encode(edges, forKey: .edges)
+    }
+    
+   @discardableResult
+func addNode(recipeID: String, at point: CGPoint) -> Node {
+    var node = Node(recipeID: recipeID, x: point.x, y: point.y)
+    
+    // Set default machine tier if available
+    if let recipe = RECIPES.first(where: { $0.id == recipeID }),
+       let tiers = MACHINE_TIERS[recipe.category] {
+        let preferences = MachinePreferences.load()
+        if let defaultTierID = preferences.getDefaultTier(for: recipe.category),
+           tiers.contains(where: { $0.id == defaultTierID }) {
+            node.selectedMachineTierID = defaultTierID
+        }
+    }
+    
+    nodes[node.id] = node
+    computeFlows()
+    return node
+}
+    
+    func updateNode(_ node: Node) {
+        nodes[node.id] = node
+        computeFlows()
+    }
+    
+    func setTarget(for nodeID: UUID, to value: Double?) {
+        guard var node = nodes[nodeID] else { return }
+        
+        node.targetPerMin = value.map { max(0, $0) }
+        nodes[nodeID] = node
+        
+        computeFlows()
+    }
+    
+    func addEdge(from: UUID, to: UUID, item: String) {
+        guard from != to else { return }
+        
+        // Check if edge already exists
+        let edgeExists = edges.contains { edge in
+            edge.fromNode == from && edge.toNode == to && edge.item == item
+        }
+        
+        if !edgeExists {
+            edges.append(Edge(fromNode: from, toNode: to, item: item))
+            computeFlows()
+        }
+    }
+    
+    func removeEdge(_ edge: Edge) {
+        edges.removeAll { $0.id == edge.id }
+        computeFlows()
+    }
+    
+    func removeNode(_ nodeID: UUID) {
+        nodes.removeValue(forKey: nodeID)
+        edges.removeAll { $0.fromNode == nodeID || $0.toNode == nodeID }
+        computeFlows()
+    }
+    
+   func computeFlows() {
+    guard !isComputing else {
+        pendingCompute = true
+        return
+    }
+    
+    isComputing = true
+    defer {
+        isComputing = false
+        if pendingCompute {
+            pendingCompute = false
+            DispatchQueue.main.async { [weak self] in
+                self?.computeFlows()
+            }
+        }
+    }
+    
+    var newTargets: [UUID: Double] = [:]
+    
+    // Start with only explicitly set targets
+    for (id, node) in nodes {
+        newTargets[id] = node.targetPerMin ?? 0
+    }
+    
+    // Iterate until values stabilize (handle multi-level dependencies)
+    var hasChanges = true
+    var iterations = 0
+    let maxIterations = 10 // Prevent infinite loops
+    
+    while hasChanges && iterations < maxIterations {
+        hasChanges = false
+        iterations += 1
+        
+        var needBySupplier: [UUID: Double] = [:]
+        
+        for edge in edges {
+            guard let consumer = nodes[edge.toNode],
+                  let recipe = RECIPES.first(where: { $0.id == consumer.recipeID }) else {
+                continue
+            }
+            
+            let outputAmount = recipe.outputs.values.first ?? 1
+            let craftsPerMin = (newTargets[consumer.id] ?? 0) / outputAmount
+            let inputAmount = recipe.inputs[edge.item] ?? 0
+            let totalNeed = craftsPerMin * inputAmount
+            
+            switch aggregate {
+            case .sum:
+                needBySupplier[edge.fromNode, default: 0] += totalNeed
+            case .max:
+                needBySupplier[edge.fromNode] = max(needBySupplier[edge.fromNode] ?? 0, totalNeed)
+            }
+        }
+        
+        // Check if any supplier targets need to change
+        for (supplierID, need) in needBySupplier {
+            let currentTarget = newTargets[supplierID] ?? 0
+            if abs(currentTarget - need) > Constants.computationTolerance {
+                newTargets[supplierID] = need
+                hasChanges = true
+            }
+        }
+    }
+    
+    // Apply new targets
+    for (id, targetValue) in newTargets {
+        guard var node = nodes[id] else { continue }
+        let roundedTarget = abs(targetValue - round(targetValue)) < 0.01 ? round(targetValue) : round(targetValue * 10) / 10
+        if abs((node.targetPerMin ?? 0) - roundedTarget) > Constants.computationTolerance {
+            node.targetPerMin = roundedTarget
+            nodes[id] = node
+        }
+    }
+}
+    
+    func exportJSON(from window: NSWindow?) {
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.json]
+        savePanel.nameFieldStringValue = "factorio_cards_plan.json"
+        
+        let targetWindow = window ?? NSApp.keyWindow
+        
+        savePanel.beginSheetModal(for: targetWindow!) { response in
+            guard response == .OK, let url = savePanel.url else { return }
+            
+            do {
+                let data = try JSONEncoder().encode(self)
+                try data.write(to: url)
+            } catch {
+                DispatchQueue.main.async {
+                    NSAlert(error: error).runModal()
+                }
+            }
+        }
+    }
+    
+    func importJSON(from window: NSWindow?) {
+        let openPanel = NSOpenPanel()
+        openPanel.allowedContentTypes = [.json]
+        
+        let targetWindow = window ?? NSApp.keyWindow
+        
+        openPanel.beginSheetModal(for: targetWindow!) { response in
+            guard response == .OK, let url = openPanel.url else { return }
+            
+            do {
+                let data = try Data(contentsOf: url)
+                let graphState = try JSONDecoder().decode(GraphState.self, from: data)
+                
+                DispatchQueue.main.async {
+                    self.nodes = graphState.nodes
+                    self.edges = graphState.edges
+                    self.computeFlows()
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    NSAlert(error: error).runModal()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Supporting Types
+struct DragContext: Equatable {
+    var fromPort: PortKey
+    var startPoint: CGPoint
+    var currentPoint: CGPoint
+}
+
+// MARK: - Key Event Handling
+extension View {
+    func onKeyDown(perform action: @escaping (NSEvent) -> Bool) -> some View {
+        self.background(KeyEventHandling(onKeyDown: action))
+    }
+}
+
+struct KeyEventHandling: NSViewRepresentable {
+    let onKeyDown: (NSEvent) -> Bool
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = KeyEventView()
+        view.onKeyDown = onKeyDown
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let keyView = nsView as? KeyEventView {
+            keyView.onKeyDown = onKeyDown
+        }
+    }
+}
+
+class KeyEventView: NSView {
+    var onKeyDown: ((NSEvent) -> Bool)?
+    
+    override var acceptsFirstResponder: Bool { true }
+    
+    override func keyDown(with event: NSEvent) {
+        if let handler = onKeyDown, handler(event) {
+            // Event was handled
+            return
+        }
+        super.keyDown(with: event)
+    }
+    
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.makeFirstResponder(self)
+    }
+}
+
+struct PickerContext: Identifiable, Equatable {
+    var id = UUID()
+    var fromPort: PortKey
+    var dropPoint: CGPoint
+}
+
+struct PortFrame: Equatable {
+    var key: PortKey
+    var frame: CGRect
+}
+
+struct PortFramesKey: PreferenceKey {
+    static var defaultValue: [PortFrame] = []
+    static func reduce(value: inout [PortFrame], nextValue: () -> [PortFrame]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
+// MARK: - Main App
+@main
+struct FactorioPlannerApp: App {
+    @StateObject private var graph = GraphState()
+    @StateObject private var preferences = MachinePreferences.load()
+    
+    var body: some Scene {
+        WindowGroup("Factorio Planner") {
+            PlannerRoot()
+                .environmentObject(graph)
+                .environmentObject(preferences)
+        }
+        .windowStyle(.titleBar)
+    }
+}
+
+// MARK: - Root View
+struct PlannerRoot: View {
+    @EnvironmentObject var graph: GraphState
+    @State private var window: NSWindow?
+    @State private var showLog = false
+    @State private var testLog = ""
+    
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            VStack(spacing: 0) {
+                TopBar(showLog: $showLog, testLog: $testLog)
+                CanvasView()
+            }
+            
+            if showLog {
+                TestConsole(testLog: $testLog) {
+                    runTests(log: &testLog)
+                }
+                .padding(12)
+                .frame(maxWidth: 420)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+        }
+        .background(WindowAccessor(window: $window))
+        .sheet(isPresented: $graph.showPicker) {
+            if let context = graph.pickerContext {
+                RecipePicker(context: context)
+            }
+        }
+        .sheet(isPresented: $graph.showGeneralPicker) {
+            GeneralRecipePicker()
+        }
+        .onPreferenceChange(PortFramesKey.self) { frames in
+            var frameDict: [PortKey: CGRect] = [:]
+            for portFrame in frames {
+                frameDict[portFrame.key] = portFrame.frame
+            }
+            graph.portFrames = frameDict
+        }
+        .onKeyDown { event in
+            handleKeyDown(event)
+        }
+    }
+    
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        // CMD+F to open recipe picker
+        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "f" {
+            // Position the picker at the center of the canvas
+            if let window = window {
+                let windowFrame = window.frame
+                graph.generalPickerDropPoint = CGPoint(
+                    x: windowFrame.width / 2,
+                    y: windowFrame.height / 2
+                )
+            } else {
+                // Fallback to a reasonable default
+                graph.generalPickerDropPoint = CGPoint(x: 400, y: 300)
+            }
+            graph.showGeneralPicker = true
+            return true
+        }
+        return false
+    }
+    
+    private func runTests(log: inout String) {
+        func write(_ message: String) {
+            log += message + "\n"
+        }
+        
+        log = "Running tests...\n"
+        
+        // Clear existing state
+        graph.nodes.removeAll()
+        graph.edges.removeAll()
+        
+        // Test 1: Basic flow propagation
+        let ironNode = graph.addNode(recipeID: "iron-plate", at: CGPoint(x: 100, y: 100))
+        let gearNode = graph.addNode(recipeID: "gear-wheel", at: CGPoint(x: 360, y: 100))
+        
+        graph.addEdge(from: ironNode.id, to: gearNode.id, item: "Iron Plate")
+        graph.setTarget(for: gearNode.id, to: 60)
+        
+        let requiredIron = graph.nodes[ironNode.id]?.targetPerMin ?? 0
+        if requiredIron >= 120 - Constants.computationTolerance {
+            write("✅ Test1: Flow propagation (≥120/min iron for 60/min gears)")
+        } else {
+            write("❌ Test1: Expected ≥120, got \(requiredIron)")
+        }
+        
+        // Test 2: Machine tier cycling
+        guard var ironNodeCopy = graph.nodes[ironNode.id] else {
+            write("❌ Test2: Could not find iron node")
+            return
+        }
+        
+        let beforeTier = getSelectedMachineTier(for: ironNodeCopy)?.name ?? "None"
+        // Simulate tier cycling by setting a different tier
+        if let recipe = RECIPES.first(where: { $0.id == ironNodeCopy.recipeID }),
+           let tiers = MACHINE_TIERS[recipe.category], tiers.count > 1 {
+            ironNodeCopy.selectedMachineTierID = tiers[1].id
+            graph.updateNode(ironNodeCopy)
+            let afterTier = getSelectedMachineTier(for: graph.nodes[ironNode.id]!)?.name ?? "None"
+            
+            if beforeTier != afterTier {
+                write("✅ Test2: Machine tier cycling (\(beforeTier) → \(afterTier))")
+            } else {
+                write("❌ Test2: Machine tier unchanged after cycling")
+            }
+        } else {
+            write("✅ Test2: Skipped (no multiple tiers for this category)")
+        }
+        
+        // Test 3: Serialization round-trip
+        do {
+            let data = try JSONEncoder().encode(graph)
+            let decodedGraph = try JSONDecoder().decode(GraphState.self, from: data)
+            
+            if graph.nodes.count == decodedGraph.nodes.count &&
+               graph.edges.count == decodedGraph.edges.count {
+                write("✅ Test3: JSON serialization round-trip successful")
+            } else {
+                write("❌ Test3: Node/edge count mismatch after serialization")
+            }
+        } catch {
+            write("❌ Test3: Serialization failed: \(error.localizedDescription)")
+        }
+        
+        write("\n--- Test Summary Complete ---")
+    }
+}
+
+// MARK: - Top Bar
+struct TopBar: View {
+    @EnvironmentObject var graph: GraphState
+    @Binding var showLog: Bool
+    @Binding var testLog: String
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Button("Add Recipe") {
+                graph.generalPickerDropPoint = CGPoint(
+                    x: 120 + .random(in: 0...80),
+                    y: 160 + .random(in: 0...60)
+                )
+                graph.showGeneralPicker = true
+            }
+            .buttonStyle(TopButtonStyle(primary: true))
+            
+        Menu("Preferences") {
+            Menu("Default Machines") {
+                ForEach(MACHINE_TIERS.keys.sorted(), id: \.self) { category in
+                    if let tiers = MACHINE_TIERS[category], tiers.count > 1 {
+                        Menu(machineName(for: category)) {
+                            ForEach(tiers, id: \.id) { tier in
+                                Button(action: {
+                                    let prefs = MachinePreferences.load()
+                                    prefs.setDefaultTier(for: category, tierID: tier.id)
+                                }) {
+                                    HStack {
+                                        Text(tier.name)
+                                        if MachinePreferences.load().getDefaultTier(for: category) == tier.id {
+                                            Spacer()
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .buttonStyle(TopButtonStyle())
+        
+        Menu("Flow: \(graph.aggregate.rawValue)") {
+            ForEach(GraphState.Aggregate.allCases, id: \.self) { mode in
+                Button(mode.rawValue + (mode == graph.aggregate ? " (current)" : "")) {
+                    graph.aggregate = mode
+                    graph.computeFlows()
+                }
+            }
+        }
+            Spacer()
+            
+            Button("Export .json") {
+                graph.exportJSON(from: NSApp.keyWindow)
+            }
+            .buttonStyle(TopButtonStyle())
+            
+            Button("Import .json") {
+                graph.importJSON(from: NSApp.keyWindow)
+            }
+            .buttonStyle(TopButtonStyle())
+            
+            Button(showLog ? "Hide Log" : "Show Log") {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    showLog.toggle()
+                }
+            }
+            .buttonStyle(TopButtonStyle())
+            
+            Button("Run Tests") {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showLog = true
+                }
+                // Small delay to ensure log panel is visible
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    testLog = ""
+                }
+            }
+            .buttonStyle(TopButtonStyle())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial)
+        .overlay(Divider(), alignment: .bottom)
+    }
+}
+
+struct TopButtonStyle: ButtonStyle {
+    var primary = false
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background {
+                if primary {
+                    LinearGradient(
+                        colors: [
+                            Color(nsColor: NSColor(calibratedRed: 0.15, green: 0.19, blue: 0.28, alpha: 1)),
+                            Color(nsColor: NSColor(calibratedRed: 0.11, green: 0.14, blue: 0.20, alpha: 1))
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                } else {
+                    Color(nsColor: NSColor(calibratedWhite: 0.16, alpha: 1))
+                }
+            }
+            .foregroundStyle(.primary)
+            .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.white.opacity(0.08))
+            )
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+struct GridBackground: View {
+    var body: some View {
+        Rectangle()
+            .fill(
+                RadialGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: Color(white: 0.12), location: 0),
+                        .init(color: Color(white: 0.10), location: 1)
+                    ]),
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: 1
+                )
+            )
+            .overlay(
+                Canvas { context, size in
+                    let dotPath = Path(CGRect(x: 0, y: 0, width: Constants.dotSize, height: Constants.dotSize))
+                    
+                    for x in stride(from: 25.0, through: size.width, by: Constants.gridSpacing) {
+                        for y in stride(from: 25.0, through: size.height, by: Constants.gridSpacing) {
+                            context.translateBy(x: x, y: y)
+                            context.fill(dotPath, with: .color(Color.white.opacity(0.05)))
+                            context.translateBy(x: -x, y: -y)
+                        }
+                    }
+                }
+            )
+    }
+}
+
+// MARK: - Canvas
+struct CanvasView: View {
+    @EnvironmentObject var graph: GraphState
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                GridBackground()
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        handleDoubleClick(in: geometry)
+                    }
+                
+                WiresLayer(portFrames: graph.portFrames)
+                
+                if let dragContext = graph.dragging {
+                    WireTempPath(from: dragContext.startPoint, to: dragContext.currentPoint)
+                }
+                
+                ForEach(Array(graph.nodes.values), id: \.id) { node in
+                    NodeCard(node: node)
+                        .position(x: node.x, y: node.y)
+                }
+            }
+            .coordinateSpace(name: "canvas")
+            .background(DragReceiver())
+            .onDrop(of: [UTType.text], isTargeted: .constant(false)) { _, _ in false }
+        }
+    }
+    
+    private func handleDoubleClick(in geometry: GeometryProxy) {
+        // Get the center of the visible area for the drop point
+        let dropPoint = CGPoint(
+            x: geometry.size.width / 2,
+            y: geometry.size.height / 2
+        )
+        
+        graph.generalPickerDropPoint = dropPoint
+        graph.showGeneralPicker = true
+    }
+}
+
+// MARK: - Node Card
+struct NodeCard: View {
+    @EnvironmentObject var graph: GraphState
+    var node: Node
+    
+    @State private var dragOffset: CGSize = .zero
+    @State private var isDragging: Bool = false
+    @State private var rateText: String = ""
+    @FocusState private var rateFocused: Bool
+    
+    var body: some View {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return AnyView(EmptyView())
+        }
+        
+        let speedBinding = Binding<Double>(
+            get: { graph.nodes[node.id]?.speedMultiplier ?? 1 },
+            set: { value in
+                guard var updatedNode = graph.nodes[node.id] else { return }
+                updatedNode.speedMultiplier = max(Constants.minSpeed, value)
+                graph.updateNode(updatedNode)
+            }
+        )
+        
+        let primaryItem = recipe.outputs.keys.first ?? recipe.inputs.keys.first ?? recipe.name
+        
+        return AnyView(
+            VStack(alignment: .leading, spacing: 2) {
+                // Header
+                HStack(spacing: 6) {
+                    ItemBadge(item: primaryItem)
+                        .hoverTooltip(recipe.name)
+                    
+                    Text(primaryItem)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                    
+                    Spacer(minLength: 0)
+                    
+                    Button(action: {
+                        graph.removeNode(node.id)
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .imageScale(.small)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                // Controls
+                HStack {
+    HStack(spacing: 4) {
+        TextField("Rate", text: Binding(
+            get: { rateText },
+            set: { text in
+                rateText = text
+                let trimmed = text.trimmingCharacters(in: .whitespaces)
+                
+                if trimmed.isEmpty {
+                    graph.setTarget(for: node.id, to: nil)
+                } else if let value = Double(trimmed) {
+                    graph.setTarget(for: node.id, to: max(0, value))
+                }
+            }
+        ))
+        .textFieldStyle(.roundedBorder)
+        .frame(width: 50)
+        .focused($rateFocused)
+        
+        Text("/min")
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .foregroundStyle(.primary)
+    }
+    
+    Spacer()
+    
+    HStack(spacing: 4) {
+        TextField("Speed", value: speedBinding, format: .number.precision(.fractionLength(0...2)))
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 50)
+        
+        Text("×")
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .foregroundStyle(.primary)
+    }
+}
+                
+                Divider()
+                
+                // I/O Ports with machine icon in middle
+                HStack(alignment: .center, spacing: 4) {
+                    // Inputs
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("In")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        
+                        ForEach(recipe.inputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                            PortRow(nodeID: node.id, side: .input, item: item, amount: amount)
+                                .font(.caption2)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Machine icon in center (now clickable)
+                    VStack(spacing: 2) {
+                        MachineIcon(node: node)
+                        
+                        Text(formatMachineCount(machineCount(for: node)))
+                            .font(.body)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.primary)
+                            .monospacedDigit()
+                    }
+                    .padding(.top, 16)
+                    .frame(maxWidth: 50)
+                    
+                    Spacer()
+                    
+                    // Outputs
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Out")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        
+                        ForEach(recipe.outputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                            PortRow(nodeID: node.id, side: .output, item: item, amount: amount)
+                                .font(.caption2)
+                        }
+                    }
+                }
+            }
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(0.20))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.white.opacity(0.05))
+            )
+            .frame(minWidth: Constants.nodeMinWidth, maxWidth: Constants.nodeMaxWidth, alignment: .leading)
+            .overlay(
+                DragHandle(node: node)
+                    .offset(x: -6, y: -6),
+                alignment: .topLeading
+            )
+            .offset(dragOffset)
+            .scaleEffect(isDragging ? 1.02 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: isDragging)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if !isDragging {
+                            isDragging = true
+                        }
+                        dragOffset = value.translation
+                    }
+                    .onEnded { value in
+                        isDragging = false
+                        
+                        // Apply the final position to the actual node
+                        guard var updatedNode = graph.nodes[node.id] else { return }
+                        updatedNode.x = node.x + value.translation.width
+                        updatedNode.y = node.y + value.translation.height
+                        
+                        // Update the graph state only once at the end
+                        graph.nodes[node.id] = updatedNode
+                        
+                        // Reset visual offset
+                        dragOffset = .zero
+                        
+                        // Trigger flow computation only once after drag is complete
+                        graph.computeFlows()
+                    }
+            )
+            .onAppear {
+                updateRateText()
+            }
+            .onChange(of: graph.nodes[node.id]?.targetPerMin) { _, _ in
+                if !rateFocused {
+                    updateRateText()
+                }
+            }
+        )
+    }
+    
+    private func updateRateText() {
+    if let targetPerMin = graph.nodes[node.id]?.targetPerMin {
+        // Format to remove unnecessary decimals
+        if targetPerMin == floor(targetPerMin) {
+            rateText = String(format: "%.0f", targetPerMin)
+        } else {
+            rateText = String(format: "%.1f", targetPerMin)
+        }
+    } else {
+        rateText = ""
+    }
+}
+}
+
+func machineText(for node: Node) -> String {
+    guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+        return "Unknown recipe"
+    }
+    
+    let outputAmount = recipe.outputs.values.first ?? 1
+    let craftsPerMin = (node.targetPerMin ?? 0) / outputAmount
+    let machines = (craftsPerMin * recipe.time) / 60.0 / max(Constants.minSpeed, node.speed)
+    let selectedTier = getSelectedMachineTier(for: node)
+    
+    return String(format: "%.2f %@ @ speed %.2f", machines, selectedTier?.name ?? "machines", node.speed)
+}
+
+struct DragHandle: View {
+    var node: Node
+    
+    var body: some View {
+        Circle()
+            .fill(Color.white.opacity(0.08))
+            .frame(width: 6, height: 6)
+    }
+}
+
+// MARK: - Port Components
+struct PortRow: View {
+    @EnvironmentObject var graph: GraphState
+    var nodeID: UUID
+    var side: IOSide
+    var item: String
+    var amount: Double
+    
+    @State private var centerInCanvas: CGPoint = .zero
+    
+    // Calculate the actual flow rate based on target per minute
+    private var flowRate: Double {
+        guard let node = graph.nodes[nodeID],
+              let targetPerMin = node.targetPerMin,
+              let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return 0
+        }
+        
+        if side == .output {
+            // For outputs, show the per-minute rate for this specific output
+            let totalOutput = recipe.outputs.values.reduce(0, +)
+            let thisOutputRatio = amount / totalOutput
+            return targetPerMin * thisOutputRatio
+        } else {
+            // For inputs, calculate based on recipe requirements
+            let outputAmount = recipe.outputs.values.first ?? 1
+            let craftsPerMin = targetPerMin / outputAmount
+            return craftsPerMin * amount
+        }
+    }
+    
+    // Format the flow rate for display
+private var flowRateText: String {
+    if flowRate == 0 {
+        return "×\(amount.formatted())"  // Show recipe amount when no target set
+    } else if flowRate == floor(flowRate) {
+        return String(format: "%.0f", flowRate)  // No decimal for whole numbers
+    } else {
+        return String(format: "%.1f", flowRate)  // Show 1 decimal only when needed
+    }
+}
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            if side == .input {
+                // Input layout: icon on left, draggable
+                HStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        IconOrMonogram(item: item, size: 16)
+                            .hoverTooltip(item)
+                        
+                        Text(flowRateText)
+                            .foregroundStyle(flowRate > 0 ? .primary : .secondary)
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .frame(minWidth: 0)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isPortConnected(nodeID: nodeID, item: item, side: .input, edges: graph.edges)
+                                  ? Color.clear
+                                  : Color.orange.opacity(0.3))
+                            .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: .input, edges: graph.edges))
+                    )
+                    .background(
+                        GeometryReader { geometry in
+                            let frame = geometry.frame(in: .named("canvas"))
+                            Color.clear
+                                .onAppear {
+                                    centerInCanvas = CGPoint(x: frame.midX, y: frame.midY)
+                                }
+                                .onChange(of: frame) { _, newFrame in
+                                    centerInCanvas = CGPoint(x: newFrame.midX, y: newFrame.midY)
+                                }
+                                .preference(
+                                    key: PortFramesKey.self,
+                                    value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side), frame: frame)]
+                                )
+                        }
+                    )
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                handleDragChanged(value)
+                            }
+                            .onEnded { _ in
+                                handleDragEnd()
+                            }
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                // Output layout: amount on left, icon on right, draggable
+                HStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        Text(flowRateText)
+                            .foregroundStyle(flowRate > 0 ? .primary : .secondary)
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
+                        
+                        IconOrMonogram(item: item, size: 16)
+                            .hoverTooltip(item)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .frame(minWidth: 0)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isPortConnected(nodeID: nodeID, item: item, side: .output, edges: graph.edges)
+                                  ? Color.clear
+                                  : Color.orange.opacity(0.3))
+                            .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: .output, edges: graph.edges))
+                    )
+                    .background(
+                        GeometryReader { geometry in
+                            let frame = geometry.frame(in: .named("canvas"))
+                            Color.clear
+                                .onAppear {
+                                    centerInCanvas = CGPoint(x: frame.midX, y: frame.midY)
+                                }
+                                .onChange(of: frame) { _, newFrame in
+                                    centerInCanvas = CGPoint(x: newFrame.midX, y: newFrame.midY)
+                                }
+                                .preference(
+                                    key: PortFramesKey.self,
+                                    value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side), frame: frame)]
+                                )
+                        }
+                    )
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                handleDragChanged(value)
+                            }
+                            .onEnded { _ in
+                                handleDragEnd()
+                            }
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+    
+    private func handleDragChanged(_ value: DragGesture.Value) {
+        let startPoint = centerInCanvas
+        let currentPoint = CGPoint(
+            x: startPoint.x + value.translation.width,
+            y: startPoint.y + value.translation.height
+        )
+        
+        if graph.dragging == nil {
+            graph.dragging = DragContext(
+                fromPort: PortKey(nodeID: nodeID, item: item, side: side),
+                startPoint: startPoint,
+                currentPoint: currentPoint
+            )
+        } else {
+            graph.dragging?.currentPoint = currentPoint
+        }
+    }
+    
+    private func handleDragEnd() {
+        guard let dragContext = graph.dragging else { return }
+        
+        let currentPoint = dragContext.currentPoint
+        let oppositeSide = side.opposite
+        
+        // Find if we hit a compatible port
+        let hitPort = graph.portFrames.first { portKey, rect in
+            portKey.item == item &&
+            portKey.side == oppositeSide &&
+            rect.insetBy(dx: -8, dy: -8).contains(currentPoint)
+        }?.key
+        
+        if let targetPort = hitPort {
+            // Create edge based on drag direction
+            if side == .output {
+                graph.addEdge(from: nodeID, to: targetPort.nodeID, item: item)
+            } else {
+                graph.addEdge(from: targetPort.nodeID, to: nodeID, item: item)
+            }
+        } else {
+            // Show recipe picker
+            graph.pickerContext = PickerContext(
+                fromPort: PortKey(nodeID: nodeID, item: item, side: side),
+                dropPoint: currentPoint
+            )
+            graph.showPicker = true
+        }
+        
+        graph.dragging = nil
+    }
+}
+
+// MARK: - Icon Components
+struct IconOrMonogram: View {
+    var item: String
+    var size: CGFloat = Constants.iconSize
+    
+    var body: some View {
+        Group {
+            if let assetName = ICON_ASSETS[item] {
+                Image(assetName)
+                    .renderingMode(.original)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                Monogram(item: item, size: size)
+            }
+        }
+        .frame(width: size, height: size)
+        .contentShape(Rectangle())
+    }
+}
+
+struct ItemBadge: View {
+    var item: String
+    
+    var body: some View {
+        IconOrMonogram(item: item, size: Constants.iconSize)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.blue.opacity(0.35))
+            )
+            .frame(width: Constants.iconSize, height: Constants.iconSize)
+    }
+}
+
+struct Monogram: View {
+    var item: String
+    var size: CGFloat = Constants.iconSize
+    
+    var body: some View {
+        let initials = item.split(separator: " ")
+            .compactMap { $0.first }
+            .prefix(2)
+        
+        Text(String(initials))
+            .font(.caption)
+            .bold()
+            .frame(width: size, height: size)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.blue.opacity(0.15))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.blue.opacity(0.35))
+            )
+    }
+}
+
+// MARK: - Tooltip
+extension View {
+    func hoverTooltip(_ text: String) -> some View {
+        modifier(HoverTooltip(text: text))
+    }
+}
+
+struct HoverTooltip: ViewModifier {
+    var text: String
+    @State private var hovering = false
+    
+    func body(content: Content) -> some View {
+        content
+            .onHover { isHovering in
+                hovering = isHovering
+            }
+            .overlay(alignment: .top) {
+                if hovering {
+                    Tooltip(text: text)
+                        .fixedSize(horizontal: true, vertical: true)
+                        .offset(y: -26)
+                        .zIndex(999)
+                        .allowsHitTesting(false)
+                }
+            }
+            .animation(.easeInOut(duration: 0.12), value: hovering)
+    }
+}
+
+struct Tooltip: View {
+    var text: String
+    
+    var body: some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.ultraThinMaterial)
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.white.opacity(0.15))
+            )
+    }
+}
+
+// MARK: - Wire Rendering
+struct WiresLayer: View {
+    @EnvironmentObject var graph: GraphState
+    var portFrames: [PortKey: CGRect]
+    
+    var body: some View {
+        ZStack {
+            // Wire paths (existing Canvas code)
+            Canvas { context, size in
+                for edge in graph.edges {
+                    let outputPortKey = PortKey(nodeID: edge.fromNode, item: edge.item, side: .output)
+                    let inputPortKey = PortKey(nodeID: edge.toNode, item: edge.item, side: .input)
+                    
+                    guard let fromRect = portFrames[outputPortKey],
+                          let toRect = portFrames[inputPortKey] else {
+                        continue
+                    }
+                    
+                    let startPoint = CGPoint(x: fromRect.midX, y: fromRect.midY)
+                    let endPoint = CGPoint(x: toRect.midX, y: toRect.midY)
+                    let path = createCubicPath(from: startPoint, to: endPoint)
+                    
+                    context.stroke(
+                        path,
+                        with: .color(.orange.opacity(0.9)),
+                        lineWidth: Constants.wireLineWidth
+                    )
+                }
+            }
+            .allowsHitTesting(false)
+            
+            // Flow rate labels
+            ForEach(graph.edges, id: \.id) { edge in
+                WireFlowLabel(edge: edge, portFrames: portFrames)
+            }
+        }
+    }
+}
+
+struct WireFlowLabel: View {
+    @EnvironmentObject var graph: GraphState
+    var edge: Edge
+    var portFrames: [PortKey: CGRect]
+    
+    var body: some View {
+        let outputPortKey = PortKey(nodeID: edge.fromNode, item: edge.item, side: .output)
+        let inputPortKey = PortKey(nodeID: edge.toNode, item: edge.item, side: .input)
+        
+        guard let fromRect = portFrames[outputPortKey],
+              let toRect = portFrames[inputPortKey],
+              let consumerNode = graph.nodes[edge.toNode],
+              let consumerRecipe = RECIPES.first(where: { $0.id == consumerNode.recipeID }),
+              let targetPerMin = consumerNode.targetPerMin,
+              targetPerMin > 0 else {
+            return AnyView(EmptyView())
+        }
+        
+        // Calculate flow rate
+        let outputAmount = consumerRecipe.outputs.values.first ?? 1
+        let craftsPerMin = targetPerMin / outputAmount
+        let inputAmount = consumerRecipe.inputs[edge.item] ?? 0
+        let flowRate = craftsPerMin * inputAmount
+        
+        // Calculate label position (midpoint of the wire)
+        let startPoint = CGPoint(x: fromRect.midX, y: fromRect.midY)
+        let endPoint = CGPoint(x: toRect.midX, y: toRect.midY)
+        let midPoint = CGPoint(
+            x: (startPoint.x + endPoint.x) / 2,
+            y: (startPoint.y + endPoint.y) / 2
+        )
+        
+        // Format flow rate
+        let flowText: String
+        if flowRate == floor(flowRate) {
+            flowText = String(format: "%.0f", flowRate)
+        } else {
+            flowText = String(format: "%.1f", flowRate)
+        }
+        
+        return AnyView(
+            Text(flowText)
+                .font(.body)
+                .fontWeight(.bold)
+                .foregroundStyle(.black)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(.orange.opacity(0.9))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(.orange.opacity(0.6))
+                )
+                .position(midPoint)
+                .allowsHitTesting(false)
+        )
+    }
+}
+
+struct WireTempPath: View {
+    var from: CGPoint
+    var to: CGPoint
+    
+    var body: some View {
+        Canvas { context, size in
+            let path = createCubicPath(from: from, to: to)
+            let dashedPath = path.strokedPath(.init(lineWidth: Constants.wireLineWidth, dash: [6, 6]))
+            
+            context.stroke(
+                dashedPath,
+                with: .color(.blue.opacity(0.8))
+            )
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+func createCubicPath(from startPoint: CGPoint, to endPoint: CGPoint) -> Path {
+    var path = Path()
+    let deltaX = max(abs(endPoint.x - startPoint.x) * 0.5, Constants.curveTension)
+    
+    path.move(to: startPoint)
+    path.addCurve(
+        to: endPoint,
+        control1: CGPoint(x: startPoint.x + deltaX, y: startPoint.y),
+        control2: CGPoint(x: endPoint.x - deltaX, y: endPoint.y)
+    )
+    return path
+}
+
+// MARK: - Recipe Picker
+struct RecipePicker: View {
+    @EnvironmentObject var graph: GraphState
+    var context: PickerContext
+    @State private var searchText = ""
+    
+    private var availableRecipes: [Recipe] {
+        let recipes = switch context.fromPort.side {
+        case .output:
+            ITEM_TO_CONSUMERS[context.fromPort.item] ?? []
+        case .input:
+            ITEM_TO_PRODUCERS[context.fromPort.item] ?? []
+        }
+        
+        if searchText.isEmpty {
+            return recipes.sorted { $0.name < $1.name }
+        } else {
+            return recipes
+                .filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+                .sorted { $0.name < $1.name }
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                Text(titleText)
+                    .font(.headline)
+                Spacer()
+                Button("Close") {
+                    graph.showPicker = false
+                }
+            }
+            
+            // Search bar
+            TextField("Search recipes...", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+            
+            // Recipe List
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(availableRecipes, id: \.id) { recipe in
+                        RecipeListRow(
+                            recipe: recipe,
+                            isAlternative: isAlternativeRecipe(recipe)
+                        ) {
+                            selectRecipe(recipe)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            
+            if availableRecipes.isEmpty {
+                Text("No recipes found")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 480, minHeight: 360)
+    }
+    
+    private var titleText: String {
+        switch context.fromPort.side {
+        case .output:
+            return "What uses '\(context.fromPort.item)'?"
+        case .input:
+            return "How to make '\(context.fromPort.item)'?"
+        }
+    }
+    
+    private func selectRecipe(_ recipe: Recipe) {
+    graph.showPicker = false
+    
+    let nodePosition: CGPoint
+    switch context.fromPort.side {
+    case .output:
+        // Dragging from "Out" - place node to the right of where the drag ended
+        nodePosition = CGPoint(
+            x: context.dropPoint.x + 140,  // Node width + some spacing
+            y: context.dropPoint.y - 60   // Center vertically with the node
+        )
+    case .input:
+        // Dragging from "In" - place node to the left of where the drag ended
+        nodePosition = CGPoint(
+            x: context.dropPoint.x - 140, // Node width + some spacing to the left
+            y: context.dropPoint.y - 60   // Center vertically with the node
+        )
+    }
+    
+    let newNode = graph.addNode(recipeID: recipe.id, at: nodePosition)
+    
+    // Connect based on port side
+    switch context.fromPort.side {
+    case .output:
+        graph.addEdge(from: context.fromPort.nodeID, to: newNode.id, item: context.fromPort.item)
+    case .input:
+        graph.addEdge(from: newNode.id, to: context.fromPort.nodeID, item: context.fromPort.item)
+    }
+}
+}
+
+// MARK: - General Recipe Picker
+struct GeneralRecipePicker: View {
+    @EnvironmentObject var graph: GraphState
+    @State private var searchText = ""
+    @State private var selectedCategory = "All"
+    
+    private var categories: [String] {
+        let allCategories = Set(RECIPES.map { $0.category })
+        return ["All"] + allCategories.sorted()
+    }
+    
+    private var filteredRecipes: [Recipe] {
+        var recipes = RECIPES
+        
+        // Filter by category
+        if selectedCategory != "All" {
+            recipes = recipes.filter { $0.category == selectedCategory }
+        }
+        
+        // Filter by search text
+        if !searchText.isEmpty {
+            recipes = recipes.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        }
+        
+        return recipes.sorted { $0.name < $1.name }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                Text("Choose Recipe")
+                    .font(.headline)
+                Spacer()
+                Button("Close") {
+                    graph.showGeneralPicker = false
+                }
+            }
+            
+            // Filters
+            HStack(spacing: 12) {
+                // Category picker
+                Picker("Category", selection: $selectedCategory) {
+                    ForEach(categories, id: \.self) { category in
+                        Text(category).tag(category)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 140)
+                
+                // Search bar
+                TextField("Search recipes...", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+            }
+            
+            // Recipe List
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(filteredRecipes, id: \.id) { recipe in
+                        RecipeListRow(
+                            recipe: recipe,
+                            isAlternative: isAlternativeRecipe(recipe)
+                        ) {
+                            selectRecipe(recipe)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            
+            if filteredRecipes.isEmpty {
+                Text("No recipes found")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding()
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 520, minHeight: 400)
+    }
+    
+    private func selectRecipe(_ recipe: Recipe) {
+        graph.showGeneralPicker = false
+        graph.addNode(recipeID: recipe.id, at: graph.generalPickerDropPoint)
+    }
+}
+
+// MARK: - Recipe List Components
+struct RecipeListRow: View {
+    var recipe: Recipe
+    var isAlternative: Bool = false
+    var onSelect: () -> Void
+    @State private var isHovered = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Alternative recipe indicator
+            if isAlternative {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.blue.opacity(0.6))
+                    .frame(width: 4, height: 40)
+            }
+            
+            // Recipe info
+            RecipeRowContent(recipe: recipe, isAlternative: isAlternative)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(backgroundView)
+        .overlay(borderView)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+        .onTapGesture {
+            onSelect()
+        }
+    }
+    
+    private var backgroundView: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(backgroundFill)
+    }
+    
+    private var borderView: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .stroke(borderColor)
+    }
+    
+    private var backgroundFill: Color {
+        if isAlternative && isHovered {
+            return Color.blue.opacity(0.15)
+        } else if isAlternative {
+            return Color.blue.opacity(0.08)
+        } else if isHovered {
+            return Color.white.opacity(0.08)
+        } else {
+            return Color.white.opacity(0.03)
+        }
+    }
+    
+    private var borderColor: Color {
+        if isAlternative {
+            return Color.blue.opacity(0.3)
+        } else {
+            return Color.white.opacity(isHovered ? 0.15 : 0.05)
+        }
+    }
+}
+
+struct RecipeRowContent: View {
+    var recipe: Recipe
+    var isAlternative: Bool
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            RecipeRowHeader(recipe: recipe, isAlternative: isAlternative)
+            RecipeRowDetails(recipe: recipe)
+        }
+    }
+}
+
+struct RecipeRowHeader: View {
+    var recipe: Recipe
+    var isAlternative: Bool
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(recipe.name)
+                .font(.system(.body, weight: .medium))
+                .foregroundStyle(isAlternative ? .blue : .primary)
+            
+            if isAlternative {
+                Text("ALT")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(Color.blue.opacity(0.2))
+                    .foregroundStyle(.blue)
+                    .cornerRadius(4)
+            }
+            
+            Text(recipe.category)
+                .font(.caption)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.white.opacity(0.1))
+                .cornerRadius(4)
+            
+            Spacer()
+            
+            Text("\(recipe.time, specifier: "%.1f")s")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct RecipeRowDetails: View {
+    var recipe: Recipe
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            RecipeInputs(inputs: recipe.inputs)
+            RecipeOutputs(outputs: recipe.outputs)
+            Spacer()
+        }
+    }
+}
+
+struct RecipeInputs: View {
+    var inputs: [String: Double]
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("In:")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 4) {
+                ForEach(inputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                    HStack(spacing: 2) {
+                        IconOrMonogram(item: item, size: 12)
+                        Text("×\(amount, format: .number)")
+                            .font(.caption)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct RecipeOutputs: View {
+    var outputs: [String: Double]
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("Out:")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 4) {
+                ForEach(outputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                    HStack(spacing: 2) {
+                        IconOrMonogram(item: item, size: 12)
+                        Text("×\(amount, format: .number)")
+                            .font(.caption)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Utility Views
+struct WindowAccessor: NSViewRepresentable {
+    @Binding var window: NSWindow?
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            self.window = view.window
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+struct Wrap: View {
+    var items: [String]
+    
+    var body: some View {
+        FlowLayout(items: items, spacing: 6) { item in
+            Text(item)
+                .font(.caption)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.white.opacity(0.06))
+                .cornerRadius(999)
+        }
+    }
+}
+
+struct FlowLayout<Data: RandomAccessCollection, Content: View>: View where Data.Element: Hashable {
+    let items: Data
+    let spacing: CGFloat
+    let content: (Data.Element) -> Content
+    
+    init(items: Data, spacing: CGFloat = 8, @ViewBuilder content: @escaping (Data.Element) -> Content) {
+        self.items = items
+        self.spacing = spacing
+        self.content = content
+    }
+    
+    var body: some View {
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+        
+        return GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                ForEach(Array(items), id: \.self) { item in
+                    content(item)
+                        .padding(.all, 4)
+                        .alignmentGuide(.leading) { dimensions in
+                            if (abs(width - dimensions.width) > geometry.size.width) {
+                                width = 0
+                                height -= dimensions.height + spacing
+                            }
+                            let result = width
+                            if item == items.last {
+                                width = 0
+                            } else {
+                                width -= dimensions.width + spacing
+                            }
+                            return result
+                        }
+                        .alignmentGuide(.top) { dimensions in
+                            let result = height
+                            if item == items.last {
+                                height = 0
+                            }
+                            return result
+                        }
+                }
+            }
+        }
+        .frame(height: 80)
+    }
+}
+
+struct DragReceiver: View {
+    var body: some View {
+        Color.clear
+    }
+}
+
+// MARK: - Test Console
+struct TestConsole: View {
+    @Binding var testLog: String
+    var runTests: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Test Console")
+                    .bold()
+                Spacer()
+                Button("Run Tests", action: runTests)
+                    .buttonStyle(TopButtonStyle())
+            }
+            
+            ScrollView {
+                Text(testLog)
+                    .font(.system(.footnote, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(minHeight: 200)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.black.opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.08))
+        )
+    }
+}
