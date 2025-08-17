@@ -1,8 +1,9 @@
-//
-//  Recipe Model.swift
-//  Factorio Planner
-//
-//  Created by Daniel on 8/17/25.
-//
-
-import Foundation
+// MARK: - Recipe Model
+struct Recipe: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    var category: String
+    var time: Double
+    var inputs: [String: Double]
+    var outputs: [String: Double]
+}

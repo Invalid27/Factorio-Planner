@@ -1,8 +1,7 @@
-//
-//  Edge Model.swift
-//  Factorio Planner
-//
-//  Created by Daniel on 8/17/25.
-//
-
-import Foundation
+// MARK: - Edge Model
+struct Edge: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var fromNode: UUID
+    var toNode: UUID
+    var item: String
+}

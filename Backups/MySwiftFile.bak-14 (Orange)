@@ -83,7 +83,7 @@ let INTERMEDIATE_PRODUCTS: Set<String> = [
     "Uranium Fuel Cell",
 ]
 
-// MARK: - Fixed Port Row with Transform-Aware Position
+// MARK: - Port Components
 struct PortRow: View {
     @EnvironmentObject var graph: GraphState
     var nodeID: UUID
@@ -126,138 +126,126 @@ struct PortRow: View {
     var body: some View {
         HStack(spacing: 4) {
             if side == .input {
-                portContent
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                portContent
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private var portContent: some View {
-        HStack(spacing: 4) {
-            if side == .input {
                 HStack(spacing: 4) {
-                    IconOrMonogram(item: item, size: 16)
-                        .hoverTooltip(item)
-                    
-                    Text(flowRateText)
-                        .foregroundStyle(flowRate > 0 ? .primary : .secondary)
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .layoutPriority(1)
-                }
-            } else {
-                HStack(spacing: 4) {
-                    Text(flowRateText)
-                        .foregroundStyle(flowRate > 0 ? .primary : .secondary)
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .layoutPriority(1)
-                    
-                    IconOrMonogram(item: item, size: 16)
-                        .hoverTooltip(item)
-                }
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .frame(minWidth: 0)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isPortConnected(nodeID: nodeID, item: item, side: side, edges: graph.edges)
-                      ? Color.clear
-                      : Color.orange.opacity(0.3))
-                .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: side, edges: graph.edges))
-        )
-        .background(
-            GeometryReader { geometry in
-                let frame = geometry.frame(in: .named("canvas"))
-                Color.clear
-                    .onAppear {
-                        updatePortFrame(frame)
+                    HStack(spacing: 4) {
+                        IconOrMonogram(item: item, size: 16)
+                            .hoverTooltip(item)
+                        
+                        Text(flowRateText)
+                            .foregroundStyle(flowRate > 0 ? .primary : .secondary)
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
                     }
-                    .onChange(of: frame) { _, newFrame in
-                        updatePortFrame(newFrame)
-                    }
-                    // Also update when zoom/pan changes
-                    .onChange(of: graph.canvasScale) { _, _ in
-                        let currentFrame = geometry.frame(in: .named("canvas"))
-                        updatePortFrame(currentFrame)
-                    }
-                    .onChange(of: graph.canvasOffset) { _, _ in
-                        let currentFrame = geometry.frame(in: .named("canvas"))
-                        updatePortFrame(currentFrame)
-                    }
-                    .preference(
-                        key: PortFramesKey.self,
-                        value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side), frame: frame)]
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .frame(minWidth: 0)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isPortConnected(nodeID: nodeID, item: item, side: .input, edges: graph.edges)
+                                  ? Color.clear
+                                  : Color.orange.opacity(0.3))
+                            .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: .input, edges: graph.edges))
                     )
+                    .background(
+                        GeometryReader { geometry in
+                            let frame = geometry.frame(in: .named("canvas"))
+                            Color.clear
+                                .onAppear {
+                                    centerInCanvas = CGPoint(x: frame.midX, y: frame.midY)
+                                }
+                                .onChange(of: frame) { _, newFrame in
+                                    centerInCanvas = CGPoint(x: newFrame.midX, y: newFrame.midY)
+                                }
+                                .preference(
+                                    key: PortFramesKey.self,
+                                    value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side), frame: frame)]
+                                )
+                        }
+                    )
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                handleDragChanged(value)
+                            }
+                            .onEnded { _ in
+                                handleDragEnd()
+                            }
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 4) {
+                    HStack(spacing: 4) {
+                        Text(flowRateText)
+                            .foregroundStyle(flowRate > 0 ? .primary : .secondary)
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(1)
+                        
+                        IconOrMonogram(item: item, size: 16)
+                            .hoverTooltip(item)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .frame(minWidth: 0)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isPortConnected(nodeID: nodeID, item: item, side: .output, edges: graph.edges)
+                                  ? Color.clear
+                                  : Color.orange.opacity(0.3))
+                            .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: .output, edges: graph.edges))
+                    )
+                    .background(
+                        GeometryReader { geometry in
+                            let frame = geometry.frame(in: .named("canvas"))
+                            Color.clear
+                                .onAppear {
+                                    centerInCanvas = CGPoint(x: frame.midX, y: frame.midY)
+                                }
+                                .onChange(of: frame) { _, newFrame in
+                                    centerInCanvas = CGPoint(x: newFrame.midX, y: newFrame.midY)
+                                }
+                                .preference(
+                                    key: PortFramesKey.self,
+                                    value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side), frame: frame)]
+                                )
+                        }
+                    )
+                    .highPriorityGesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                handleDragChanged(value)
+                            }
+                            .onEnded { _ in
+                                handleDragEnd()
+                            }
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
-        )
-        .highPriorityGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    handleDragChanged(value)
-                }
-                .onEnded { _ in
-                    handleDragEnd()
-                }
-        )
-    }
-    
-    private func updatePortFrame(_ frame: CGRect) {
-        // Transform the frame to account for canvas scale and offset
-        let transformedFrame = CGRect(
-            x: frame.origin.x * graph.canvasScale + graph.canvasOffset.width,
-            y: frame.origin.y * graph.canvasScale + graph.canvasOffset.height,
-            width: frame.width * graph.canvasScale,
-            height: frame.height * graph.canvasScale
-        )
-        
-        centerInCanvas = CGPoint(
-            x: transformedFrame.midX,
-            y: transformedFrame.midY
-        )
+        }
     }
     
     private func handleDragChanged(_ value: DragGesture.Value) {
-        // Transform drag coordinates to canvas space
-        let startPoint = CGPoint(
-            x: (centerInCanvas.x - graph.canvasOffset.width) / graph.canvasScale,
-            y: (centerInCanvas.y - graph.canvasOffset.height) / graph.canvasScale
-        )
-        
+        let startPoint = centerInCanvas
         let currentPoint = CGPoint(
-            x: startPoint.x + value.translation.width / graph.canvasScale,
-            y: startPoint.y + value.translation.height / graph.canvasScale
-        )
-        
-        // Now transform back to screen space for drawing
-        let screenStart = CGPoint(
-            x: startPoint.x * graph.canvasScale + graph.canvasOffset.width,
-            y: startPoint.y * graph.canvasScale + graph.canvasOffset.height
-        )
-        
-        let screenCurrent = CGPoint(
-            x: currentPoint.x * graph.canvasScale + graph.canvasOffset.width,
-            y: currentPoint.y * graph.canvasScale + graph.canvasOffset.height
+            x: startPoint.x + value.translation.width,
+            y: startPoint.y + value.translation.height
         )
         
         if graph.dragging == nil {
             graph.dragging = DragContext(
                 fromPort: PortKey(nodeID: nodeID, item: item, side: side),
-                startPoint: screenStart,
-                currentPoint: screenCurrent
+                startPoint: startPoint,
+                currentPoint: currentPoint
             )
         } else {
-            graph.dragging?.currentPoint = screenCurrent
+            graph.dragging?.currentPoint = currentPoint
         }
     }
     
@@ -267,19 +255,10 @@ struct PortRow: View {
         let currentPoint = dragContext.currentPoint
         let oppositeSide = side.opposite
         
-        // Transform the current point to check against port frames
         let hitPort = graph.portFrames.first { portKey, rect in
-            // Transform rect to screen space
-            let screenRect = CGRect(
-                x: rect.origin.x * graph.canvasScale + graph.canvasOffset.width,
-                y: rect.origin.y * graph.canvasScale + graph.canvasOffset.height,
-                width: rect.width * graph.canvasScale,
-                height: rect.height * graph.canvasScale
-            )
-            
-            return portKey.item == item &&
-                   portKey.side == oppositeSide &&
-                   screenRect.insetBy(dx: -8, dy: -8).contains(currentPoint)
+            portKey.item == item &&
+            portKey.side == oppositeSide &&
+            rect.insetBy(dx: -8, dy: -8).contains(currentPoint)
         }?.key
         
         if let targetPort = hitPort {
@@ -289,15 +268,9 @@ struct PortRow: View {
                 graph.addEdge(from: targetPort.nodeID, to: nodeID, item: item)
             }
         } else {
-            // Convert drop point to canvas coordinates
-            let canvasDropPoint = CGPoint(
-                x: (currentPoint.x - graph.canvasOffset.width) / graph.canvasScale,
-                y: (currentPoint.y - graph.canvasOffset.height) / graph.canvasScale
-            )
-            
             graph.pickerContext = PickerContext(
                 fromPort: PortKey(nodeID: nodeID, item: item, side: side),
-                dropPoint: canvasDropPoint
+                dropPoint: currentPoint
             )
             graph.showPicker = true
         }
@@ -2186,8 +2159,7 @@ func isAlternativeRecipe(_ recipe: Recipe) -> Bool {
     return ALTERNATIVE_RECIPE_IDS.contains(recipe.id)
 }
 
-// MARK: - Fixed GraphState with corrected access levels
-
+// MARK: - Graph State
 final class GraphState: ObservableObject, Codable {
     enum CodingKeys: CodingKey {
         case nodes, edges
@@ -2198,52 +2170,37 @@ final class GraphState: ObservableObject, Codable {
         case sum = "Sum"
     }
     
-    // FIXED: Proper @Published properties with didSet
     @Published var nodes: [UUID: Node] = [:] {
         didSet {
-            // Debounce auto-save to prevent excessive saves
-            scheduleAutoSave()
+            autoSave()
         }
     }
-    
     @Published var edges: [Edge] = [] {
         didSet {
-            scheduleAutoSave()
+            autoSave()
         }
     }
-    
-    // UI State - these should NOT trigger auto-save
     @Published var dragging: DragContext? = nil
     @Published var showPicker = false
     @Published var pickerContext: PickerContext? = nil
     @Published var showGeneralPicker = false
     @Published var generalPickerDropPoint: CGPoint = .zero
-    @Published var portFrames: [PortKey: CGRect] = [:]
-    @Published var lastMousePosition: CGPoint = CGPoint(x: 400, y: 300)
-    
-    // Selection and clipboard
-    @Published var selectedNodeIDs: Set<UUID> = []
-    @Published var clipboard: [Node] = []
-    @Published var clipboardWasCut: Bool = false
-    
-    // Canvas controls
-    @Published var canvasScale: CGFloat = 1.0
-    @Published var canvasOffset: CGSize = .zero
-    @Published var selectionRect: CGRect? = nil
-    @Published var isSelecting: Bool = false
-    
-    // FIXED: Separate aggregate with its own save mechanism
     @Published var aggregate: Aggregate = .max {
         didSet {
             savePreferences()
         }
     }
+    @Published var portFrames: [PortKey: CGRect] = [:]
+    @Published var lastMousePosition: CGPoint = CGPoint(x: 400, y: 300)
     
-    // FIXED: Made saveTimer internal so NodeCard can access it
+    // Selection and clipboard
+    @Published var selectedNodeID: UUID? = nil
+    @Published var clipboard: Node? = nil
+    @Published var clipboardWasCut: Bool = false
+    
     private var isComputing = false
     private var pendingCompute = false
-    internal var saveTimer: Timer?  // Changed from private to internal
-    private let saveQueue = DispatchQueue(label: "graphstate.save", qos: .utility)
+    private var saveTimer: Timer?
     
     init() {
         loadAutoSave()
@@ -2263,33 +2220,90 @@ final class GraphState: ObservableObject, Codable {
         try container.encode(edges, forKey: .edges)
     }
     
-    // MARK: - FIXED Auto-Save System
+    // MARK: - Selection and Clipboard Methods
     
-    private func scheduleAutoSave() {
+    func selectNode(_ nodeID: UUID?) {
+        selectedNodeID = nodeID
+    }
+    
+    func copyNode() {
+        guard let selectedID = selectedNodeID,
+              let node = nodes[selectedID] else { return }
+        clipboard = node
+        clipboardWasCut = false
+        print("Copied node: \(node.recipeID)")
+    }
+    
+    func cutNode() {
+        guard let selectedID = selectedNodeID,
+              let node = nodes[selectedID] else { return }
+        clipboard = node
+        clipboardWasCut = true
+        removeNode(selectedID)
+        selectedNodeID = nil
+        print("Cut node: \(node.recipeID)")
+    }
+    
+    func pasteNode() {
+        guard let nodeToPaste = clipboard else { return }
+        
+        // Create a new node with offset position
+        let offset = CGFloat(20)
+        let newPosition = CGPoint(
+            x: lastMousePosition.x + offset,
+            y: lastMousePosition.y + offset
+        )
+        
+        var newNode = Node(
+            recipeID: nodeToPaste.recipeID,
+            x: newPosition.x,
+            y: newPosition.y,
+            targetPerMin: nodeToPaste.targetPerMin,
+            speedMultiplier: nodeToPaste.speedMultiplier
+        )
+        
+        // Copy machine tier and modules
+        newNode.selectedMachineTierID = nodeToPaste.selectedMachineTierID
+        newNode.modules = nodeToPaste.modules
+        
+        nodes[newNode.id] = newNode
+        selectedNodeID = newNode.id
+        computeFlows()
+        
+        // If it was cut, clear the clipboard
+        if clipboardWasCut {
+            clipboard = nil
+            clipboardWasCut = false
+        }
+        
+        print("Pasted node at \(newPosition)")
+    }
+    
+    func deleteSelectedNode() {
+        guard let selectedID = selectedNodeID else { return }
+        removeNode(selectedID)
+        selectedNodeID = nil
+    }
+    
+    // MARK: - Auto-Save Functions
+    
+    private func autoSave() {
         // Cancel any pending save
         saveTimer?.invalidate()
         
-        // Schedule a new save after a delay (debouncing)
-        saveTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
-            self?.performSave()
+        // Schedule a new save after a short delay (to avoid saving on every single change)
+        saveTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+            self.performSave()
         }
     }
     
     private func performSave() {
-        saveQueue.async { [weak self] in
-            guard let self = self else { return }
-            
-            do {
-                let data = try JSONEncoder().encode(self)
-                DispatchQueue.main.async {
-                    UserDefaults.standard.set(data, forKey: "FactorioPlannerAutoSave")
-                    print("Auto-saved graph with \(self.nodes.count) nodes and \(self.edges.count) edges")
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    print("Failed to auto-save: \(error)")
-                }
-            }
+        do {
+            let data = try JSONEncoder().encode(self)
+            UserDefaults.standard.set(data, forKey: "FactorioPlannerAutoSave")
+            print("Auto-saved graph with \(nodes.count) nodes and \(edges.count) edges")
+        } catch {
+            print("Failed to auto-save: \(error)")
         }
     }
     
@@ -2305,8 +2319,8 @@ final class GraphState: ObservableObject, Codable {
             self.edges = savedState.edges
             print("Loaded auto-save with \(nodes.count) nodes and \(edges.count) edges")
             
-            // FIXED: Compute flows after a brief delay to let UI settle
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            // Recompute flows after loading
+            DispatchQueue.main.async {
                 self.computeFlows()
             }
         } catch {
@@ -2325,7 +2339,20 @@ final class GraphState: ObservableObject, Codable {
         }
     }
     
-    // MARK: - FIXED Node Management
+    // MARK: - Manual Save/Load/Clear
+    
+    func clearGraph() {
+        nodes.removeAll()
+        edges.removeAll()
+        selectedNodeID = nil
+        computeFlows()
+    }
+    
+    func hasAutoSave() -> Bool {
+        return UserDefaults.standard.data(forKey: "FactorioPlannerAutoSave") != nil
+    }
+    
+    // MARK: - Node Management
     
     @discardableResult
     func addNode(recipeID: String, at point: CGPoint) -> Node {
@@ -2344,43 +2371,24 @@ final class GraphState: ObservableObject, Codable {
             }
         }
         
-        // FIXED: Update nodes dictionary directly and trigger computation
         nodes[node.id] = node
-        selectedNodeIDs = [node.id]
-        
-        // FIXED: Delay computation to prevent conflicts
-        DispatchQueue.main.async {
-            self.computeFlows()
-        }
-        
+        selectedNodeID = node.id  // Auto-select newly added node
+        computeFlows()
         return node
     }
     
     func updateNode(_ node: Node) {
-        // FIXED: Use main thread and prevent recursive updates
-        guard !isComputing else { return }
-        
         nodes[node.id] = node
-        
-        DispatchQueue.main.async {
-            self.computeFlows()
-        }
+        computeFlows()
     }
     
     func setTarget(for nodeID: UUID, to value: Double?) {
         guard var node = nodes[nodeID] else { return }
         
-        let newValue = value.map { max(0, $0) }
+        node.targetPerMin = value.map { max(0, $0) }
+        nodes[nodeID] = node
         
-        // FIXED: Only update if value actually changed
-        if node.targetPerMin != newValue {
-            node.targetPerMin = newValue
-            nodes[nodeID] = node
-            
-            DispatchQueue.main.async {
-                self.computeFlows()
-            }
-        }
+        computeFlows()
     }
     
     func addEdge(from: UUID, to: UUID, item: String) {
@@ -2392,61 +2400,42 @@ final class GraphState: ObservableObject, Codable {
         
         if !edgeExists {
             edges.append(Edge(fromNode: from, toNode: to, item: item))
-            
-            DispatchQueue.main.async {
-                self.computeFlows()
-            }
+            computeFlows()
         }
     }
     
     func removeEdge(_ edge: Edge) {
         edges.removeAll { $0.id == edge.id }
-        
-        DispatchQueue.main.async {
-            self.computeFlows()
-        }
+        computeFlows()
     }
     
     func removeNode(_ nodeID: UUID) {
         nodes.removeValue(forKey: nodeID)
         edges.removeAll { $0.fromNode == nodeID || $0.toNode == nodeID }
-        
-        DispatchQueue.main.async {
-            self.computeFlows()
-        }
+        computeFlows()
     }
     
-    // MARK: - FIXED Flow Computation
+    // MARK: - Flow Computation
     
     func computeFlows() {
-        // FIXED: Ensure we're on main thread and prevent recursive calls
-        guard Thread.isMainThread else {
-            DispatchQueue.main.async {
-                self.computeFlows()
-            }
-            return
-        }
-        
         guard !isComputing else {
             pendingCompute = true
             return
         }
         
         isComputing = true
-        
         defer {
             isComputing = false
             if pendingCompute {
                 pendingCompute = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self.computeFlows()
+                DispatchQueue.main.async { [weak self] in
+                    self?.computeFlows()
                 }
             }
         }
         
         var newTargets: [UUID: Double] = [:]
         
-        // Initialize with current targets
         for (id, node) in nodes {
             newTargets[id] = node.targetPerMin ?? 0
         }
@@ -2490,137 +2479,17 @@ final class GraphState: ObservableObject, Codable {
             }
         }
         
-        // FIXED: Update nodes without triggering didSet recursively
-        var updatedNodes = nodes
-        var anyChanges = false
-        
         for (id, targetValue) in newTargets {
-            guard var node = updatedNodes[id] else { continue }
+            guard var node = nodes[id] else { continue }
             let roundedTarget = abs(targetValue - round(targetValue)) < 0.01 ? round(targetValue) : round(targetValue * 10) / 10
-            
             if abs((node.targetPerMin ?? 0) - roundedTarget) > Constants.computationTolerance {
                 node.targetPerMin = roundedTarget
-                updatedNodes[id] = node
-                anyChanges = true
-            }
-        }
-        
-        // FIXED: Only update if there were actual changes
-        if anyChanges {
-            // Temporarily disable auto-save during bulk update
-            let timer = saveTimer
-            saveTimer?.invalidate()
-            
-            nodes = updatedNodes
-            
-            // Restore auto-save timer
-            saveTimer = timer
-        }
-    }
-    
-    // MARK: - Selection and Clipboard Methods (FIXED)
-    
-    func selectNode(_ nodeID: UUID?) {
-        if let id = nodeID {
-            selectedNodeIDs = [id]
-        } else {
-            selectedNodeIDs.removeAll()
-        }
-    }
-    
-    func toggleNodeSelection(_ nodeID: UUID) {
-        if selectedNodeIDs.contains(nodeID) {
-            selectedNodeIDs.remove(nodeID)
-        } else {
-            selectedNodeIDs.insert(nodeID)
-        }
-    }
-    
-    func selectNodes(in rect: CGRect) {
-        selectedNodeIDs.removeAll()
-        for (id, node) in nodes {
-            let nodeRect = CGRect(x: node.x - 100, y: node.y - 50, width: 200, height: 100)
-            if rect.intersects(nodeRect) {
-                selectedNodeIDs.insert(id)
+                nodes[id] = node
             }
         }
     }
     
-    func copyNodes() {
-        clipboard = selectedNodeIDs.compactMap { nodes[$0] }
-        clipboardWasCut = false
-    }
-    
-    func cutNodes() {
-        clipboard = selectedNodeIDs.compactMap { nodes[$0] }
-        clipboardWasCut = true
-        for id in selectedNodeIDs {
-            removeNode(id)
-        }
-        selectedNodeIDs.removeAll()
-    }
-    
-    func pasteNodes() {
-        guard !clipboard.isEmpty else { return }
-        
-        let offset = CGFloat(20)
-        var newSelectedIDs: Set<UUID> = []
-        
-        for nodeToPaste in clipboard {
-            var newNode = Node(
-                recipeID: nodeToPaste.recipeID,
-                x: lastMousePosition.x + offset,
-                y: lastMousePosition.y + offset,
-                targetPerMin: nodeToPaste.targetPerMin,
-                speedMultiplier: nodeToPaste.speedMultiplier
-            )
-            newNode.selectedMachineTierID = nodeToPaste.selectedMachineTierID
-            newNode.modules = nodeToPaste.modules
-            
-            nodes[newNode.id] = newNode
-            newSelectedIDs.insert(newNode.id)
-        }
-        
-        selectedNodeIDs = newSelectedIDs
-        
-        DispatchQueue.main.async {
-            self.computeFlows()
-        }
-        
-        if clipboardWasCut {
-            clipboard.removeAll()
-            clipboardWasCut = false
-        }
-    }
-    
-    func deleteSelectedNodes() {
-        for id in selectedNodeIDs {
-            removeNode(id)
-        }
-        selectedNodeIDs.removeAll()
-    }
-    
-    // MARK: - Manual Save/Load/Clear (FIXED)
-    
-    func clearGraph() {
-        // Temporarily disable auto-save
-        saveTimer?.invalidate()
-        
-        nodes.removeAll()
-        edges.removeAll()
-        selectedNodeIDs.removeAll()
-        
-        // Re-enable auto-save and compute
-        DispatchQueue.main.async {
-            self.computeFlows()
-        }
-    }
-    
-    func hasAutoSave() -> Bool {
-        return UserDefaults.standard.data(forKey: "FactorioPlannerAutoSave") != nil
-    }
-    
-    // MARK: - Import/Export (FIXED)
+    // MARK: - Import/Export
     
     func exportJSON(from window: NSWindow?) {
         let savePanel = NSSavePanel()
@@ -2629,8 +2498,8 @@ final class GraphState: ObservableObject, Codable {
         
         let targetWindow = window ?? NSApp.keyWindow
         
-        savePanel.beginSheetModal(for: targetWindow!) { [weak self] response in
-            guard response == .OK, let url = savePanel.url, let self = self else { return }
+        savePanel.beginSheetModal(for: targetWindow!) { response in
+            guard response == .OK, let url = savePanel.url else { return }
             
             do {
                 let data = try JSONEncoder().encode(self)
@@ -2649,25 +2518,18 @@ final class GraphState: ObservableObject, Codable {
         
         let targetWindow = window ?? NSApp.keyWindow
         
-        openPanel.beginSheetModal(for: targetWindow!) { [weak self] response in
-            guard response == .OK, let url = openPanel.url, let self = self else { return }
+        openPanel.beginSheetModal(for: targetWindow!) { response in
+            guard response == .OK, let url = openPanel.url else { return }
             
             do {
                 let data = try Data(contentsOf: url)
                 let graphState = try JSONDecoder().decode(GraphState.self, from: data)
                 
                 DispatchQueue.main.async {
-                    // Temporarily disable auto-save during import
-                    self.saveTimer?.invalidate()
-                    
                     self.nodes = graphState.nodes
                     self.edges = graphState.edges
-                    self.selectedNodeIDs.removeAll()
-                    
-                    // Re-enable auto-save and compute flows
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        self.computeFlows()
-                    }
+                    self.selectedNodeID = nil
+                    self.computeFlows()
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -2677,33 +2539,6 @@ final class GraphState: ObservableObject, Codable {
         }
     }
 }
-
-// MARK: - Selection Overlay
-struct SelectionOverlay: View {
-    @EnvironmentObject var graph: GraphState
-    
-    var body: some View {
-        GeometryReader { geometry in
-            if let rect = graph.selectionRect {
-                Rectangle()
-                    .fill(Color.orange.opacity(0.1))
-                    .overlay(
-                        Rectangle()
-                            .stroke(Color.orange.opacity(0.5), lineWidth: 1)
-                            .background(
-                                Rectangle()
-                                    .stroke(style: StrokeStyle(lineWidth: 1, dash: [5]))
-                                    .foregroundColor(.white.opacity(0.3))
-                            )
-                    )
-                    .frame(width: abs(rect.width), height: abs(rect.height))
-                    .position(x: rect.midX, y: rect.midY)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-}
-
 // MARK: - Supporting Types
 struct DragContext: Equatable {
     var fromPort: PortKey
@@ -2729,6 +2564,7 @@ struct PortFramesKey: PreferenceKey {
     }
 }
 
+// MARK: - Main App
 @main
 struct FactorioPlannerApp: App {
     @StateObject private var graph = GraphState()
@@ -2742,39 +2578,42 @@ struct FactorioPlannerApp: App {
         }
         .windowStyle(.titleBar)
         .commands {
+            // Edit menu commands
             CommandGroup(replacing: .pasteboard) {
                 Button("Cut") {
-                    graph.cutNodes()
+                    graph.cutNode()
                 }
                 .keyboardShortcut("x", modifiers: [.command])
-                .disabled(graph.selectedNodeIDs.isEmpty)
+                .disabled(graph.selectedNodeID == nil)
                 
                 Button("Copy") {
-                    graph.copyNodes()
+                    graph.copyNode()
                 }
                 .keyboardShortcut("c", modifiers: [.command])
-                .disabled(graph.selectedNodeIDs.isEmpty)
+                .disabled(graph.selectedNodeID == nil)
                 
                 Button("Paste") {
-                    graph.pasteNodes()
+                    graph.pasteNode()
                 }
                 .keyboardShortcut("v", modifiers: [.command])
-                .disabled(graph.clipboard.isEmpty)
+                .disabled(graph.clipboard == nil)
                 
                 Divider()
                 
                 Button("Delete") {
-                    graph.deleteSelectedNodes()
+                    graph.deleteSelectedNode()
                 }
                 .keyboardShortcut(.delete, modifiers: [])
-                .disabled(graph.selectedNodeIDs.isEmpty)
+                .disabled(graph.selectedNodeID == nil)
                 
                 Button("Select All") {
-                    graph.selectedNodeIDs = Set(graph.nodes.keys)
+                    // Placeholder - you could implement select all functionality
                 }
                 .keyboardShortcut("a", modifiers: [.command])
+                .disabled(true)  // Disabled for now
             }
             
+            // File menu commands
             CommandGroup(after: .newItem) {
                 Button("Add Recipe") {
                     graph.generalPickerDropPoint = graph.lastMousePosition
@@ -2784,9 +2623,8 @@ struct FactorioPlannerApp: App {
             }
         }
     }
-} // FIXED: Added missing closing brace
-// MARK: - Fixed PlannerRoot with proper return type
-
+}
+// MARK: - Root View
 struct PlannerRoot: View {
     @EnvironmentObject var graph: GraphState
     @State private var window: NSWindow?
@@ -2814,40 +2652,38 @@ struct PlannerRoot: View {
         }
     }
 }
-        
-        // MARK: - Top Bar
-        struct TopBar: View {
-            @EnvironmentObject var graph: GraphState
-            @State private var showClearConfirmation = false
+
+// MARK: - Top Bar
+struct TopBar: View {
+    @EnvironmentObject var graph: GraphState
+    @State private var showClearConfirmation = false
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Button("Add Recipe") {
+                graph.generalPickerDropPoint = CGPoint(
+                    x: 120 + .random(in: 0...80),
+                    y: 160 + .random(in: 0...60)
+                )
+                graph.showGeneralPicker = true
+            }
+            .buttonStyle(TopButtonStyle(primary: true))
             
-            var body: some View {
-                HStack(spacing: 8) {
-                    Button("Add Recipe") {
-                        graph.generalPickerDropPoint = CGPoint(
-                            x: 120 + .random(in: 0...80),
-                            y: 160 + .random(in: 0...60)
-                        )
-                        graph.showGeneralPicker = true
-                    }
-                    .buttonStyle(TopButtonStyle(primary: true))
-                    
-                    Menu("Preferences") {
-                        Menu("Default Machines") {
-                            ForEach(MACHINE_TIERS.keys.sorted(), id: \.self) { category in
-                                if let tiers = MACHINE_TIERS[category], tiers.count > 1 {
-                                    Menu(machineName(for: category)) {
-                                        ForEach(tiers, id: \.id) { tier in
-                                            Button(action: {
-                                                let prefs = MachinePreferences.load()
-                                                prefs.setDefaultTier(for: category, tierID: tier.id)
-                                            }) {
-                                                HStack {
-                                                    Text(tier.name)
-                                                    if MachinePreferences.load().getDefaultTier(for: category) == tier.id {
-                                                        Spacer()
-                                                        Image(systemName: "checkmark")
-                                                    }
-                                                }
+            Menu("Preferences") {
+                Menu("Default Machines") {
+                    ForEach(MACHINE_TIERS.keys.sorted(), id: \.self) { category in
+                        if let tiers = MACHINE_TIERS[category], tiers.count > 1 {
+                            Menu(machineName(for: category)) {
+                                ForEach(tiers, id: \.id) { tier in
+                                    Button(action: {
+                                        let prefs = MachinePreferences.load()
+                                        prefs.setDefaultTier(for: category, tierID: tier.id)
+                                    }) {
+                                        HStack {
+                                            Text(tier.name)
+                                            if MachinePreferences.load().getDefaultTier(for: category) == tier.id {
+                                                Spacer()
+                                                Image(systemName: "checkmark")
                                             }
                                         }
                                     }
@@ -2855,403 +2691,141 @@ struct PlannerRoot: View {
                             }
                         }
                     }
-                    .buttonStyle(TopButtonStyle())
-                    
-                    Menu("Flow: \(graph.aggregate.rawValue)") {
-                        ForEach(GraphState.Aggregate.allCases, id: \.self) { mode in
-                            Button(mode.rawValue) {
-                                graph.aggregate = mode
-                                graph.computeFlows()
-                            }
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    // Auto-save indicator
-                    if graph.nodes.count > 0 {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .imageScale(.small)
-                            Text("Auto-saved")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    
-                    Button("Clear") {
-                        showClearConfirmation = true
-                    }
-                    .buttonStyle(TopButtonStyle())
-                    .disabled(graph.nodes.isEmpty)
-                    .confirmationDialog("Clear Graph", isPresented: $showClearConfirmation) {
-                        Button("Clear Everything", role: .destructive) {
-                            graph.clearGraph()
-                        }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("This will remove all nodes and connections. This action cannot be undone.")
-                    }
-                    
-                    Button("Export .json") {
-                        graph.exportJSON(from: NSApp.keyWindow)
-                    }
-                    .buttonStyle(TopButtonStyle())
-                    
-                    Button("Import .json") {
-                        graph.importJSON(from: NSApp.keyWindow)
-                    }
-                    .buttonStyle(TopButtonStyle())
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.regularMaterial)
-                .overlay(Divider(), alignment: .bottom)
             }
-        }
-        
-        struct TopButtonStyle: ButtonStyle {
-            var primary = false
+            .buttonStyle(TopButtonStyle())
             
-            func makeBody(configuration: Configuration) -> some View {
-                configuration.label
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background {
-                        if primary {
-                            LinearGradient(
-                                colors: [
-                                    Color(nsColor: NSColor(calibratedRed: 0.15, green: 0.19, blue: 0.28, alpha: 1)),
-                                    Color(nsColor: NSColor(calibratedRed: 0.11, green: 0.14, blue: 0.20, alpha: 1))
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        } else {
-                            Color(nsColor: NSColor(calibratedWhite: 0.16, alpha: 1))
-                        }
+            Menu("Flow: \(graph.aggregate.rawValue)") {
+                ForEach(GraphState.Aggregate.allCases, id: \.self) { mode in
+                    Button(mode.rawValue) {
+                        graph.aggregate = mode
+                        graph.computeFlows()
                     }
-                    .foregroundStyle(.primary)
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.08))
-                    )
-                    .opacity(configuration.isPressed ? 0.85 : 1.0)
-                    .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+                }
             }
+            
+            Spacer()
+            
+            // Auto-save indicator
+            if graph.nodes.count > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .imageScale(.small)
+                    Text("Auto-saved")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            
+            Button("Clear") {
+                showClearConfirmation = true
+            }
+            .buttonStyle(TopButtonStyle())
+            .disabled(graph.nodes.isEmpty)
+            .confirmationDialog("Clear Graph", isPresented: $showClearConfirmation) {
+                Button("Clear Everything", role: .destructive) {
+                    graph.clearGraph()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will remove all nodes and connections. This action cannot be undone.")
+            }
+            
+            Button("Export .json") {
+                graph.exportJSON(from: NSApp.keyWindow)
+            }
+            .buttonStyle(TopButtonStyle())
+            
+            Button("Import .json") {
+                graph.importJSON(from: NSApp.keyWindow)
+            }
+            .buttonStyle(TopButtonStyle())
         }
-        
-// MARK: - Fixed Canvas View with Smooth Zoom and Scroll
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial)
+        .overlay(Divider(), alignment: .bottom)
+    }
+}
+
+struct TopButtonStyle: ButtonStyle {
+    var primary = false
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background {
+                if primary {
+                    LinearGradient(
+                        colors: [
+                            Color(nsColor: NSColor(calibratedRed: 0.15, green: 0.19, blue: 0.28, alpha: 1)),
+                            Color(nsColor: NSColor(calibratedRed: 0.11, green: 0.14, blue: 0.20, alpha: 1))
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                } else {
+                    Color(nsColor: NSColor(calibratedWhite: 0.16, alpha: 1))
+                }
+            }
+            .foregroundStyle(.primary)
+            .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.white.opacity(0.08))
+            )
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Canvas View
 struct CanvasView: View {
     @EnvironmentObject var graph: GraphState
-    @State private var dragStart: CGPoint? = nil
-    @State private var isDraggingCanvas = false
-    @State private var backgroundDragStart: CGPoint? = nil
-    @State private var initialCanvasOffset: CGSize = .zero
     
     var body: some View {
-        GeometryReader { geometry in
+        GeometryReader { _ in
             ZStack {
-                // Canvas content with zoom and pan
-                ZStack {
-                    GridBackground()
-                        .ignoresSafeArea()
-                        .allowsHitTesting(false)
-                    
-                    // Wires need to be transformed correctly
-                    WiresLayer(portFrames: graph.portFrames)
-                        .allowsHitTesting(false)
-                    
-                    if let dragContext = graph.dragging {
-                        WireTempPath(from: dragContext.startPoint, to: dragContext.currentPoint)
-                            .allowsHitTesting(false)
+                // Combined mouse tracking and right-click handling
+                AdvancedMouseTrackingView(
+                    onMouseMove: { position in
+                        graph.lastMousePosition = position
+                    },
+                    onRightClick: { position in
+                        graph.generalPickerDropPoint = position
+                        graph.showGeneralPicker = true
+                    },
+                    onClick: { position in
+                        // Click on empty canvas to deselect
+                        graph.selectNode(nil)
                     }
-                    
-                    // Nodes layer
-                    ForEach(Array(graph.nodes.values), id: \.id) { node in
-                        NodeCard(node: node)
-                            .position(x: node.x, y: node.y)
-                    }
-                    
-                    SelectionOverlay()
-                        .allowsHitTesting(false)
-                }
-                .scaleEffect(graph.canvasScale, anchor: .center)
-                .offset(graph.canvasOffset)
+                )
                 
-                // Invisible background for canvas interactions
-                Rectangle()
-                    .fill(Color.clear)
-                    .contentShape(Rectangle())
-                    .zIndex(-1)
-                    .gesture(
-                        DragGesture(minimumDistance: 5)
-                            .onChanged { value in
-                                handleBackgroundDragChanged(value, in: geometry)
-                            }
-                            .onEnded { value in
-                                handleBackgroundDragEnded(value, in: geometry)
-                            }
-                    )
-                    .onTapGesture { location in
-                        graph.selectedNodeIDs.removeAll()
-                    }
+                GridBackground()
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
                 
-                // Scroll wheel handler overlay
-                ScrollWheelHandler { delta, location in
-                    handleScrollWheel(delta: delta, location: location, in: geometry)
+                WiresLayer(portFrames: graph.portFrames)
+                    .allowsHitTesting(false)
+                
+                if let dragContext = graph.dragging {
+                    WireTempPath(from: dragContext.startPoint, to: dragContext.currentPoint)
                 }
                 
-                // Mouse tracking overlay
-                MouseTracker { position in
-                    // Convert mouse position to canvas coordinates accounting for zoom/pan
-                    let canvasX = (position.x - graph.canvasOffset.width) / graph.canvasScale
-                    let canvasY = (position.y - graph.canvasOffset.height) / graph.canvasScale
-                    graph.lastMousePosition = CGPoint(x: canvasX, y: canvasY)
-                } onRightClick: { position in
-                    // Convert click position to canvas coordinates
-                    let canvasX = (position.x - graph.canvasOffset.width) / graph.canvasScale
-                    let canvasY = (position.y - graph.canvasOffset.height) / graph.canvasScale
-                    graph.generalPickerDropPoint = CGPoint(x: canvasX, y: canvasY)
-                    graph.showGeneralPicker = true
+                ForEach(Array(graph.nodes.values), id: \.id) { node in
+                    NodeCard(node: node)
+                        .position(x: node.x, y: node.y)
                 }
             }
             .coordinateSpace(name: "canvas")
-            .focusable()
-            .onKeyPress { press in
-                handleKeyPress(press)
-            }
-        }
-    }
-    
-    private func handleScrollWheel(delta: CGFloat, location: CGPoint, in geometry: GeometryProxy) {
-        // Get the mouse position in canvas space before zoom
-        let canvasPointBeforeZoom = CGPoint(
-            x: (location.x - graph.canvasOffset.width) / graph.canvasScale,
-            y: (location.y - graph.canvasOffset.height) / graph.canvasScale
-        )
-        
-        // Calculate new scale
-        let scaleDelta = delta * 0.001 // Adjust sensitivity
-        let oldScale = graph.canvasScale
-        let newScale = min(3.0, max(0.3, oldScale + scaleDelta))
-        
-        // Calculate the offset needed to keep the mouse position stable
-        let scaleRatio = newScale / oldScale
-        let newOffsetX = location.x - canvasPointBeforeZoom.x * newScale
-        let newOffsetY = location.y - canvasPointBeforeZoom.y * newScale
-        
-        // Apply with animation for smoothness
-        withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-            graph.canvasScale = newScale
-            graph.canvasOffset = CGSize(width: newOffsetX, height: newOffsetY)
-        }
-    }
-    
-    private func handleBackgroundDragChanged(_ value: DragGesture.Value, in geometry: GeometryProxy) {
-        // Check if holding Option key for canvas pan
-        if NSEvent.modifierFlags.contains(.option) {
-            if !isDraggingCanvas {
-                isDraggingCanvas = true
-                initialCanvasOffset = graph.canvasOffset
-            }
-            
-            // Update canvas offset
-            graph.canvasOffset = CGSize(
-                width: initialCanvasOffset.width + value.translation.width,
-                height: initialCanvasOffset.height + value.translation.height
-            )
-        } else {
-            // Selection rectangle
-            if backgroundDragStart == nil {
-                backgroundDragStart = value.startLocation
-                graph.isSelecting = true
-            }
-            
-            if let start = backgroundDragStart {
-                let rect = CGRect(
-                    x: min(start.x, value.location.x),
-                    y: min(start.y, value.location.y),
-                    width: abs(value.location.x - start.x),
-                    height: abs(value.location.y - start.y)
-                )
-                graph.selectionRect = rect
-            }
-        }
-    }
-    
-    private func handleBackgroundDragEnded(_ value: DragGesture.Value, in geometry: GeometryProxy) {
-        if isDraggingCanvas {
-            isDraggingCanvas = false
-            initialCanvasOffset = .zero
-        } else if let rect = graph.selectionRect {
-            // Convert selection rect to canvas coordinates considering zoom
-            let scaledRect = CGRect(
-                x: (rect.origin.x - graph.canvasOffset.width) / graph.canvasScale,
-                y: (rect.origin.y - graph.canvasOffset.height) / graph.canvasScale,
-                width: rect.width / graph.canvasScale,
-                height: rect.height / graph.canvasScale
-            )
-            graph.selectNodes(in: scaledRect)
-            graph.selectionRect = nil
-        }
-        
-        backgroundDragStart = nil
-        graph.isSelecting = false
-    }
-    
-    private func handleKeyPress(_ press: KeyPress) -> KeyPress.Result {
-        switch press.key {
-        case "=", "+":
-            // Zoom in at center
-            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                let oldScale = graph.canvasScale
-                let newScale = min(3.0, oldScale + 0.1)
-                
-                // Adjust offset to keep center point stable
-                let scaleFactor = newScale / oldScale
-                graph.canvasScale = newScale
-                graph.canvasOffset = CGSize(
-                    width: graph.canvasOffset.width * scaleFactor,
-                    height: graph.canvasOffset.height * scaleFactor
-                )
-            }
-            return .handled
-            
-        case "-":
-            // Zoom out at center
-            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                let oldScale = graph.canvasScale
-                let newScale = max(0.3, oldScale - 0.1)
-                
-                // Adjust offset to keep center point stable
-                let scaleFactor = newScale / oldScale
-                graph.canvasScale = newScale
-                graph.canvasOffset = CGSize(
-                    width: graph.canvasOffset.width * scaleFactor,
-                    height: graph.canvasOffset.height * scaleFactor
-                )
-            }
-            return .handled
-            
-        case "0":
-            // Reset zoom and center
-            withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                graph.canvasScale = 1.0
-                graph.canvasOffset = .zero
-            }
-            return .handled
-            
-        case "a":
-            // Select all (if cmd is pressed)
-            if NSEvent.modifierFlags.contains(.command) {
-                graph.selectedNodeIDs = Set(graph.nodes.keys)
-                return .handled
-            }
-            return .ignored
-            
-        default:
-            return .ignored
+            .background(DragReceiver())
+            .onDrop(of: [UTType.text], isTargeted: .constant(false)) { _, _ in false }
         }
     }
 }
 
-// MARK: - Scroll Wheel Handler
-struct ScrollWheelHandler: NSViewRepresentable {
-    let onScroll: (CGFloat, CGPoint) -> Void
-    
-    func makeNSView(context: Context) -> ScrollWheelNSView {
-        let view = ScrollWheelNSView()
-        view.onScroll = onScroll
-        return view
-    }
-    
-    func updateNSView(_ nsView: ScrollWheelNSView, context: Context) {}
-    
-    class ScrollWheelNSView: NSView {
-        var onScroll: ((CGFloat, CGPoint) -> Void)?
-        
-        override var acceptsFirstResponder: Bool { true }
-        
-        override func scrollWheel(with event: NSEvent) {
-            let location = convert(event.locationInWindow, from: nil)
-            let flippedLocation = CGPoint(x: location.x, y: bounds.height - location.y)
-            
-            // Use precise scrolling delta if available, otherwise use regular delta
-            let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY * 10
-            
-            onScroll?(delta, flippedLocation)
-        }
-        
-        // Don't consume hit tests - just handle scroll events
-        override func hitTest(_ point: NSPoint) -> NSView? {
-            return nil
-        }
-    }
-}
-
-
-// MARK: - Simple Mouse Tracker
-struct MouseTracker: NSViewRepresentable {
-    let onMouseMove: (CGPoint) -> Void
-    let onRightClick: (CGPoint) -> Void
-    
-    func makeNSView(context: Context) -> MouseTrackerView {
-        let view = MouseTrackerView()
-        view.onMouseMove = onMouseMove
-        view.onRightClick = onRightClick
-        return view
-    }
-    
-    func updateNSView(_ nsView: MouseTrackerView, context: Context) {}
-}
-
-class MouseTrackerView: NSView {
-    var onMouseMove: ((CGPoint) -> Void)?
-    var onRightClick: ((CGPoint) -> Void)?
-    private var trackingArea: NSTrackingArea?
-    
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        
-        if let trackingArea = trackingArea {
-            removeTrackingArea(trackingArea)
-        }
-        
-        trackingArea = NSTrackingArea(
-            rect: bounds,
-            options: [.activeInKeyWindow, .mouseMoved],
-            owner: self,
-            userInfo: nil
-        )
-        
-        if let trackingArea = trackingArea {
-            addTrackingArea(trackingArea)
-        }
-    }
-    
-    override func mouseMoved(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        let flippedPoint = CGPoint(x: point.x, y: bounds.height - point.y)
-        onMouseMove?(flippedPoint)
-    }
-    
-    override func rightMouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        let flippedPoint = CGPoint(x: point.x, y: bounds.height - point.y)
-        onRightClick?(flippedPoint)
-    }
-    
-    // CRITICAL: Don't consume any events - just track
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return nil // Never consume hits
-    }
-}
-
-
-// FIXED: Advanced Mouse Tracking - make it non-blocking
 struct AdvancedMouseTrackingView: NSViewRepresentable {
     let onMouseMove: (CGPoint) -> Void
     let onRightClick: (CGPoint) -> Void
@@ -3304,7 +2878,11 @@ struct AdvancedMouseTrackingView: NSViewRepresentable {
             onMouseMove?(flippedLocation)
         }
         
-        // REMOVED: mouseDown handling to not interfere with SwiftUI gestures
+        override func mouseDown(with event: NSEvent) {
+            let locationInWindow = convert(event.locationInWindow, from: nil)
+            let flippedLocation = CGPoint(x: locationInWindow.x, y: bounds.height - locationInWindow.y)
+            onClick?(flippedLocation)
+        }
         
         override func rightMouseDown(with event: NSEvent) {
             let locationInWindow = convert(event.locationInWindow, from: nil)
@@ -3314,853 +2892,772 @@ struct AdvancedMouseTrackingView: NSViewRepresentable {
         
         override var acceptsFirstResponder: Bool { true }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    }
+}
+
+struct GridBackground: View {
+    var body: some View {
+        Rectangle()
+            .fill(
+                RadialGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: Color(white: 0.12), location: 0),
+                        .init(color: Color(white: 0.10), location: 1)
+                    ]),
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: 1
+                )
+            )
+            .overlay(
+                Canvas { context, size in
+                    let dotPath = Path(CGRect(x: 0, y: 0, width: Constants.dotSize, height: Constants.dotSize))
+                    
+                    for x in stride(from: 25.0, through: size.width, by: Constants.gridSpacing) {
+                        for y in stride(from: 25.0, through: size.height, by: Constants.gridSpacing) {
+                            context.translateBy(x: x, y: y)
+                            context.fill(dotPath, with: .color(Color.white.opacity(0.05)))
+                            context.translateBy(x: -x, y: -y)
+                        }
+                    }
+                }
+            )
+    }
+}
+
+struct DragReceiver: View {
+    var body: some View {
+        Color.clear
+    }
+}
+
+// MARK: - Node Card
+struct NodeCard: View {
+    @EnvironmentObject var graph: GraphState
+    var node: Node
+    
+    @State private var dragOffset: CGSize = .zero
+    @State private var isDragging: Bool = false
+    @State private var rateText: String = ""
+    @FocusState private var rateFocused: Bool
+    
+    private var isSelected: Bool {
+        graph.selectedNodeID == node.id
+    }
+    
+    var body: some View {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return AnyView(EmptyView())
+        }
         
-        // CRITICAL: Don't intercept hit testing
-        override func hitTest(_ point: NSPoint) -> NSView? {
-            // Only handle mouse tracking, don't consume clicks
-            return nil
+        let speedBinding = Binding<Double>(
+            get: { graph.nodes[node.id]?.speedMultiplier ?? 1 },
+            set: { value in
+                guard var updatedNode = graph.nodes[node.id] else { return }
+                updatedNode.speedMultiplier = max(Constants.minSpeed, value)
+                graph.updateNode(updatedNode)
+            }
+        )
+        
+        let primaryItem = recipe.outputs.keys.first ?? recipe.inputs.keys.first ?? recipe.name
+        
+        return AnyView(
+            VStack(alignment: .leading, spacing: 2) {
+                // Header
+                HStack(spacing: 6) {
+                    ItemBadge(item: primaryItem)
+                        .hoverTooltip(recipe.name)
+                    
+                    Text(primaryItem)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                    
+                    Spacer(minLength: 0)
+                    
+                    Button(action: {
+                        graph.removeNode(node.id)
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .imageScale(.small)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                // Controls
+                HStack {
+                    HStack(spacing: 4) {
+                        TextField("Rate", text: Binding(
+                            get: { rateText },
+                            set: { text in
+                                rateText = text
+                                let trimmed = text.trimmingCharacters(in: .whitespaces)
+                                
+                                if trimmed.isEmpty {
+                                    graph.setTarget(for: node.id, to: nil)
+                                } else if let value = Double(trimmed) {
+                                    graph.setTarget(for: node.id, to: max(0, value))
+                                }
+                            }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 50)
+                        .focused($rateFocused)
+                        
+                        Text("/min")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                    }
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 4) {
+                        TextField("Speed", value: speedBinding, format: .number.precision(.fractionLength(0...2)))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 50)
+                        
+                        Text("×")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                    }
+                }
+                
+                Divider()
+                
+                // I/O Ports with machine icon in middle
+                HStack(alignment: .center, spacing: 4) {
+                    // Inputs
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("In")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        
+                        ForEach(recipe.inputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                            PortRow(nodeID: node.id, side: .input, item: item, amount: amount)
+                                .font(.caption2)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Machine icon in center with modules
+                    VStack(spacing: 2) {
+                        MachineIcon(node: node)
+                        
+                        Text(formatMachineCount(machineCount(for: node)))
+                            .font(.body)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.primary)
+                            .monospacedDigit()
+                        
+                        // Module slots
+                        if let selectedTier = getSelectedMachineTier(for: node), selectedTier.moduleSlots > 0 {
+                            ModuleSlotsView(node: node, slotCount: selectedTier.moduleSlots)
+                        }
+                        
+                        // Module stats if any modules installed
+                        if !node.modules.compactMap({ $0 }).isEmpty {
+                            ModuleStatsView(node: node)
+                        }
+                    }
+                    .padding(.top, 16)
+                    .frame(maxWidth: 60)
+                    
+                    Spacer()
+                    
+                    // Outputs
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Out")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        
+                        ForEach(recipe.outputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                            PortRow(nodeID: node.id, side: .output, item: item, amount: amount)
+                                .font(.caption2)
+                        }
+                    }
+                }
+            }
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.black.opacity(isSelected ? 0.25 : 0.20))  // Slightly lighter when selected
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.orange.opacity(0.4) : Color.white.opacity(0.05), lineWidth: isSelected ? 1.5 : 1)
+            )
+            .opacity(isSelected ? 1.0 : 0.9)
+            .shadow(color: isSelected ? Color.orange.opacity(0.15) : Color.clear, radius: 4)  // Subtle glow
+            .frame(minWidth: Constants.nodeMinWidth, maxWidth: Constants.nodeMaxWidth, alignment: .leading)
+            .offset(dragOffset)  // Apply visual offset for smooth dragging
+            .scaleEffect(isDragging ? 1.02 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: isDragging)
+            .animation(.easeOut(duration: 0.15), value: isSelected)
+            .onTapGesture {
+                graph.selectNode(node.id)
+            }
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if !isDragging {
+                            isDragging = true
+                            graph.selectNode(node.id)  // Select on drag start
+                        }
+                        // Only update visual position during drag (smooth, immediate feedback)
+                        dragOffset = value.translation
+                    }
+                    .onEnded { value in
+                        isDragging = false
+                        
+                        // Update the actual node position in state when drag ends
+                        guard var updatedNode = graph.nodes[node.id] else { return }
+                        updatedNode.x = node.x + value.translation.width
+                        updatedNode.y = node.y + value.translation.height
+                        
+                        // Update state without animation to prevent bounce
+                        withAnimation(nil) {
+                            graph.nodes[node.id] = updatedNode
+                        }
+                        
+                        // Reset visual offset since position is now in state
+                        dragOffset = .zero
+                        
+                        // Compute flows after drag is complete
+                        graph.computeFlows()
+                    }
+            )
+            .onAppear {
+                updateRateText()
+            }
+            .onChange(of: graph.nodes[node.id]?.targetPerMin) { _, _ in
+                if !rateFocused {
+                    updateRateText()
+                }
+            }
+        )
+    }
+    
+    private func updateRateText() {
+        if let targetPerMin = graph.nodes[node.id]?.targetPerMin {
+            if targetPerMin == floor(targetPerMin) {
+                rateText = String(format: "%.0f", targetPerMin)
+            } else {
+                rateText = String(format: "%.1f", targetPerMin)
+            }
+        } else {
+            rateText = ""
         }
     }
 }
-        
-        struct GridBackground: View {
-            var body: some View {
-                Rectangle()
-                    .fill(
-                        RadialGradient(
-                            gradient: Gradient(stops: [
-                                .init(color: Color(white: 0.12), location: 0),
-                                .init(color: Color(white: 0.10), location: 1)
-                            ]),
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: 1
-                        )
-                    )
-                    .overlay(
-                        Canvas { context, size in
-                            let dotPath = Path(CGRect(x: 0, y: 0, width: Constants.dotSize, height: Constants.dotSize))
-                            
-                            for x in stride(from: 25.0, through: size.width, by: Constants.gridSpacing) {
-                                for y in stride(from: 25.0, through: size.height, by: Constants.gridSpacing) {
-                                    context.translateBy(x: x, y: y)
-                                    context.fill(dotPath, with: .color(Color.white.opacity(0.05)))
-                                    context.translateBy(x: -x, y: -y)
-                                }
-                            }
-                        }
-                    )
-            }
+
+// MARK: - Machine Icon
+struct MachineIcon: View {
+    var node: Node
+    @EnvironmentObject var graph: GraphState
+    
+    var body: some View {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return AnyView(EmptyView())
         }
         
-        struct DragReceiver: View {
-            var body: some View {
-                Color.clear
-            }
-        }
+        let selectedTier = getSelectedMachineTier(for: node)
+        let iconColor = machineIconColor(for: recipe.category)
         
-        // MARK: - Fixed Node Card Component
-        
-        struct NodeCard: View {
-            @EnvironmentObject var graph: GraphState
-            var node: Node
-            
-            @State private var dragOffset: CGSize = .zero
-            @State private var isDragging: Bool = false
-            @State private var rateText: String = ""
-            @State private var isUpdatingRate: Bool = false
-            @FocusState private var rateFocused: Bool
-            
-            // Track offsets for all selected nodes during multi-drag
-            @State private var multiDragOffsets: [UUID: CGSize] = [:]
-            
-            private var isSelected: Bool {
-                graph.selectedNodeIDs.contains(node.id)
-            }
-            
-            var body: some View {
-                guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
-                    return AnyView(EmptyView())
-                }
-                
-                // FIXED: Create binding that prevents recursive updates
-                let speedBinding = Binding<Double>(
-                    get: {
-                        graph.nodes[node.id]?.speedMultiplier ?? 1
-                    },
-                    set: { value in
-                        guard let currentNode = graph.nodes[node.id],
-                              currentNode.speedMultiplier != value else { return }
-                        
-                        var updatedNode = currentNode
-                        updatedNode.speedMultiplier = max(Constants.minSpeed, value)
-                        graph.updateNode(updatedNode)
-                    }
-                )
-                
-                let primaryItem = recipe.outputs.keys.first ?? recipe.inputs.keys.first ?? recipe.name
-                
-                return AnyView(
-                    VStack(alignment: .leading, spacing: 2) {
-                        // Header
-                        HStack(spacing: 6) {
-                            ItemBadge(item: primaryItem)
-                                .hoverTooltip(recipe.name)
-                            
-                            Text(primaryItem)
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .lineLimit(1)
-                            
-                            Spacer(minLength: 0)
-                            
-                            Button(action: {
-                                graph.removeNode(node.id)
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .imageScale(.small)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        
-                        // Controls
-                        HStack {
-                            HStack(spacing: 4) {
-                                TextField("Rate", text: Binding(
-                                    get: { rateText },
-                                    set: { text in
-                                        // FIXED: Prevent recursive updates
-                                        guard !isUpdatingRate else { return }
-                                        
-                                        rateText = text
-                                        let trimmed = text.trimmingCharacters(in: .whitespaces)
-                                        
-                                        if trimmed.isEmpty {
-                                            graph.setTarget(for: node.id, to: nil)
-                                        } else if let value = Double(trimmed) {
-                                            graph.setTarget(for: node.id, to: max(0, value))
-                                        }
-                                    }
-                                ))
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 50)
-                                .focused($rateFocused)
-                                
-                                Text("/min")
-                                    .font(.caption2)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.primary)
-                            }
-                            
-                            Spacer()
-                            
-                            HStack(spacing: 4) {
-                                TextField("Speed", value: speedBinding, format: .number.precision(.fractionLength(0...2)))
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 50)
-                                
-                                Text("×")
-                                    .font(.caption2)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.primary)
-                            }
-                        }
-                        
-                        Divider()
-                        
-                        // I/O Ports with machine icon in middle
-                        HStack(alignment: .center, spacing: 4) {
-                            // Inputs
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("In")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                
-                                ForEach(recipe.inputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
-                                    PortRow(nodeID: node.id, side: .input, item: item, amount: amount)
-                                        .font(.caption2)
-                                }
-                            }
-                            
-                            Spacer()
-                            
-                            // Machine icon in center with modules
-                            VStack(spacing: 2) {
-                                MachineIcon(node: node)
-                                
-                                Text(formatMachineCount(machineCount(for: node)))
-                                    .font(.body)
-                                    .fontWeight(.bold)
-                                    .foregroundStyle(.primary)
-                                    .monospacedDigit()
-                                
-                                // Module slots
-                                if let selectedTier = getSelectedMachineTier(for: node), selectedTier.moduleSlots > 0 {
-                                    ModuleSlotsView(node: node, slotCount: selectedTier.moduleSlots)
-                                }
-                                
-                                // Module stats if any modules installed
-                                if !node.modules.compactMap({ $0 }).isEmpty {
-                                    ModuleStatsView(node: node)
-                                }
-                            }
-                            .padding(.top, 16)
-                            .frame(maxWidth: 60)
-                            
-                            Spacer()
-                            
-                            // Outputs
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("Out")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                
-                                ForEach(recipe.outputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
-                                    PortRow(nodeID: node.id, side: .output, item: item, amount: amount)
-                                        .font(.caption2)
-                                }
-                            }
-                        }
-                    }
-                        .padding(4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.black.opacity(isSelected ? 0.25 : 0.20))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(isSelected ? Color.orange.opacity(0.4) : Color.white.opacity(0.05), lineWidth: isSelected ? 1.5 : 1)
-                        )
-                        .opacity(isSelected ? 1.0 : 0.9)
-                        .shadow(color: isSelected ? Color.orange.opacity(0.15) : Color.clear, radius: 4)
-                        .frame(minWidth: Constants.nodeMinWidth, maxWidth: Constants.nodeMaxWidth, alignment: .leading)
-                        .offset(dragOffset)
-                        .scaleEffect(isDragging ? 1.02 : 1.0)
-                        .animation(.easeOut(duration: 0.1), value: isDragging)
-                        .animation(.easeOut(duration: 0.15), value: isSelected)
-                        .onTapGesture {
-                            handleTap()
-                        }
-                        .gesture(
-                            DragGesture()
-                                .onChanged { value in
-                                    handleNodeDragChanged(value)
-                                }
-                                .onEnded { value in
-                                    handleNodeDragEnded(value)
-                                }
-                        )
-                        .onAppear {
-                            updateRateText()
-                        }
-                        .onChange(of: graph.nodes[node.id]?.targetPerMin) { _, _ in
-                            if !rateFocused {
-                                updateRateText()
-                            }
-                        }
-                )
-            }
-            
-            private func handleTap() {
-                if NSEvent.modifierFlags.contains(.command) {
-                    // Command+click to add/remove from selection
-                    graph.toggleNodeSelection(node.id)
-                } else if NSEvent.modifierFlags.contains(.shift) {
-                    // Shift+click to add to selection
-                    graph.selectedNodeIDs.insert(node.id)
+        return AnyView(
+            Group {
+                if let tier = selectedTier, let assetName = tier.iconAsset {
+                    Image(assetName)
+                        .renderingMode(.original)
+                        .resizable()
+                        .interpolation(.none)
+                        .scaledToFit()
+                } else if let assetName = ICON_ASSETS[recipe.category] {
+                    Image(assetName)
+                        .renderingMode(.original)
+                        .resizable()
+                        .interpolation(.none)
+                        .scaledToFit()
                 } else {
-                    // Regular click to select only this node
-                    graph.selectNode(node.id)
+                    Image(systemName: machineIconName(for: recipe.category))
+                        .font(.title2)
+                        .foregroundStyle(iconColor)
                 }
             }
-            
-            private func handleNodeDragChanged(_ value: DragGesture.Value) {
-                if !isDragging {
-                    isDragging = true
-                    
-                    // If this node isn't selected, select only it
-                    if !graph.selectedNodeIDs.contains(node.id) {
-                        graph.selectNode(node.id)
-                    }
-                    
-                    // Initialize offsets for all selected nodes
-                    multiDragOffsets = [:]
-                    for id in graph.selectedNodeIDs {
-                        multiDragOffsets[id] = .zero
-                    }
-                }
-                
-                // Update visual position for this node
-                dragOffset = value.translation
-                
-                // Store the offset for this node
-                multiDragOffsets[node.id] = value.translation
+            .frame(width: 50, height: 50)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(iconColor.opacity(0.3), lineWidth: 1)
+            )
+            .onTapGesture {
+                cycleMachineTier(for: node)
             }
+            .hoverTooltip(selectedTier?.name ?? machineName(for: recipe.category))
+        )
+    }
+    
+    private func cycleMachineTier(for node: Node) {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }),
+              let tiers = MACHINE_TIERS[recipe.category],
+              tiers.count > 1 else {
+            return
+        }
+        
+        var updatedNode = node
+        
+        let currentIndex: Int
+        if let selectedTierID = node.selectedMachineTierID,
+           let index = tiers.firstIndex(where: { $0.id == selectedTierID }) {
+            currentIndex = index
+        } else {
+            currentIndex = 0
+        }
+        
+        let nextIndex = (currentIndex + 1) % tiers.count
+        let nextTier = tiers[nextIndex]
+        
+        updatedNode.selectedMachineTierID = nextTier.id
+        
+        // Update module slots when tier changes
+        updatedNode.modules = Array(repeating: nil, count: nextTier.moduleSlots)
+        
+        graph.updateNode(updatedNode)
+    }
+    
+    private func machineIconName(for category: String) -> String {
+        switch category {
+        case "assembling": return "gearshape.2"
+        case "smelting", "casting": return "flame"
+        case "chemistry", "cryogenic": return "flask"
+        case "biochamber": return "leaf"
+        case "electromagnetic": return "bolt"
+        case "crushing", "recycling": return "hammer"
+        case "space-manufacturing": return "sparkles"
+        case "centrifuging": return "tornado"
+        case "rocket-building": return "airplane"
+        case "mining": return "cube"
+        case "quality": return "star"
+        default: return "gearshape"
+        }
+    }
+    
+    private func machineIconColor(for category: String) -> Color {
+        switch category {
+        case "assembling": return .blue
+        case "smelting", "casting": return .orange
+        case "chemistry", "cryogenic": return .green
+        case "biochamber": return Color.green
+        case "electromagnetic": return .purple
+        case "crushing", "recycling": return .gray
+        case "space-manufacturing": return .cyan
+        case "centrifuging": return .yellow
+        case "rocket-building": return .red
+        case "mining": return .brown
+        case "quality": return .yellow
+        default: return .secondary
+        }
+    }
+}
+
+// MARK: - Module UI Components
+struct ModuleSlotsView: View {
+    @EnvironmentObject var graph: GraphState
+    var node: Node
+    var slotCount: Int
+    
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("Modules")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             
-            private func handleNodeDragEnded(_ value: DragGesture.Value) {
-                isDragging = false
-                
-                // FIXED: Batch update all selected nodes without triggering multiple computations
-                var updatedNodes = graph.nodes
-                
-                for id in graph.selectedNodeIDs {
-                    guard var updatedNode = updatedNodes[id] else { continue }
-                    
-                    // Use the same translation for all selected nodes
-                    updatedNode.x += value.translation.width
-                    updatedNode.y += value.translation.height
-                    
-                    updatedNodes[id] = updatedNode
-                }
-                
-                // FIXED: Update all nodes at once to prevent multiple recomputations
-                let timer = graph.saveTimer
-                graph.saveTimer?.invalidate()
-                
-                graph.nodes = updatedNodes
-                
-                graph.saveTimer = timer
-                
-                // Reset offsets
-                dragOffset = .zero
-                multiDragOffsets = [:]
-                
-                // FIXED: Single computation after all updates
-                DispatchQueue.main.async {
-                    graph.computeFlows()
+            HStack(spacing: 2) {
+                ForEach(0..<slotCount, id: \.self) { index in
+                    ModuleSlot(node: node, slotIndex: index)
                 }
             }
-            
-            private func updateRateText() {
-                guard !isUpdatingRate else { return }
-                
-                isUpdatingRate = true
-                defer { isUpdatingRate = false }
-                
-                if let targetPerMin = graph.nodes[node.id]?.targetPerMin {
-                    if targetPerMin == floor(targetPerMin) {
-                        rateText = String(format: "%.0f", targetPerMin)
-                    } else {
-                        rateText = String(format: "%.1f", targetPerMin)
-                    }
+        }
+    }
+}
+
+struct ModuleSlot: View {
+    @EnvironmentObject var graph: GraphState
+    var node: Node
+    var slotIndex: Int
+    @State private var showModulePicker = false
+    
+    private var hasRestrictions: Bool {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return false
+        }
+        
+        // Check if productivity modules are restricted
+        let testProductivityModule = Module(
+            id: "test", name: "Test", type: .productivity, level: 1,
+            quality: .normal, speedBonus: 0, productivityBonus: 0.1,
+            efficiencyBonus: 0, iconAsset: nil
+        )
+        
+        return !canUseModule(testProductivityModule, forRecipe: recipe)
+    }
+    
+    var body: some View {
+        Button(action: {
+            showModulePicker = true
+        }) {
+            Group {
+                if slotIndex < node.modules.count, let module = node.modules[slotIndex] {
+                    ModuleIcon(module: module, size: 12)
                 } else {
-                    rateText = ""
-                }
-            }
-        }
-        // MARK: - Fixed Machine Icon Component
-        
-        struct MachineIcon: View {
-            var node: Node
-            @EnvironmentObject var graph: GraphState
-            
-            var body: some View {
-                guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
-                    return AnyView(EmptyView())
-                }
-                
-                let selectedTier = getSelectedMachineTier(for: node)
-                let iconColor = machineIconColor(for: recipe.category)
-                
-                return AnyView(
-                    Group {
-                        if let tier = selectedTier, let assetName = tier.iconAsset {
-                            Image(assetName)
-                                .renderingMode(.original)
-                                .resizable()
-                                .interpolation(.none)
-                                .scaledToFit()
-                        } else if let assetName = ICON_ASSETS[recipe.category] {
-                            Image(assetName)
-                                .renderingMode(.original)
-                                .resizable()
-                                .interpolation(.none)
-                                .scaledToFit()
-                        } else {
-                            Image(systemName: machineIconName(for: recipe.category))
-                                .font(.title2)
-                                .foregroundStyle(iconColor)
-                        }
-                    }
-                        .frame(width: 50, height: 50)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.black.opacity(0.1))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(iconColor.opacity(0.3), lineWidth: 1)
-                        )
-                        .onTapGesture {
-                            cycleMachineTier(for: node)
-                        }
-                        .hoverTooltip(selectedTier?.name ?? machineName(for: recipe.category))
-                )
-            }
-            
-            private func cycleMachineTier(for node: Node) {
-                guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }),
-                      let tiers = MACHINE_TIERS[recipe.category],
-                      tiers.count > 1 else {
-                    return
-                }
-                
-                var updatedNode = node
-                
-                let currentIndex: Int
-                if let selectedTierID = node.selectedMachineTierID,
-                   let index = tiers.firstIndex(where: { $0.id == selectedTierID }) {
-                    currentIndex = index
-                } else {
-                    currentIndex = 0
-                }
-                
-                let nextIndex = (currentIndex + 1) % tiers.count
-                let nextTier = tiers[nextIndex]
-                
-                updatedNode.selectedMachineTierID = nextTier.id
-                
-                // Update module slots when tier changes
-                updatedNode.modules = Array(repeating: nil, count: nextTier.moduleSlots)
-                
-                // FIXED: Use the graph's updateNode method
-                graph.updateNode(updatedNode)
-            }
-            
-            private func machineIconName(for category: String) -> String {
-                switch category {
-                case "assembling": return "gearshape.2"
-                case "smelting", "casting": return "flame"
-                case "chemistry", "cryogenic": return "flask"
-                case "biochamber": return "leaf"
-                case "electromagnetic": return "bolt"
-                case "crushing", "recycling": return "hammer"
-                case "space-manufacturing": return "sparkles"
-                case "centrifuging": return "tornado"
-                case "rocket-building": return "airplane"
-                case "mining": return "cube"
-                case "quality": return "star"
-                default: return "gearshape"
-                }
-            }
-            
-            private func machineIconColor(for category: String) -> Color {
-                switch category {
-                case "assembling": return .blue
-                case "smelting", "casting": return .orange
-                case "chemistry", "cryogenic": return .green
-                case "biochamber": return Color.green
-                case "electromagnetic": return .purple
-                case "crushing", "recycling": return .gray
-                case "space-manufacturing": return .cyan
-                case "centrifuging": return .yellow
-                case "rocket-building": return .red
-                case "mining": return .brown
-                case "quality": return .yellow
-                default: return .secondary
-                }
-            }
-        }
-        
-        
-        // MARK: - Module UI Components
-        struct ModuleSlotsView: View {
-            @EnvironmentObject var graph: GraphState
-            var node: Node
-            var slotCount: Int
-            
-            var body: some View {
-                VStack(spacing: 2) {
-                    Text("Modules")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    
-                    HStack(spacing: 2) {
-                        ForEach(0..<slotCount, id: \.self) { index in
-                            ModuleSlot(node: node, slotIndex: index)
-                        }
-                    }
-                }
-            }
-        }
-        
-        struct ModuleSlot: View {
-            @EnvironmentObject var graph: GraphState
-            var node: Node
-            var slotIndex: Int
-            @State private var showModulePicker = false
-            
-            private var hasRestrictions: Bool {
-                guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
-                    return false
-                }
-                
-                // Check if productivity modules are restricted
-                let testProductivityModule = Module(
-                    id: "test", name: "Test", type: .productivity, level: 1,
-                    quality: .normal, speedBonus: 0, productivityBonus: 0.1,
-                    efficiencyBonus: 0, iconAsset: nil
-                )
-                
-                return !canUseModule(testProductivityModule, forRecipe: recipe)
-            }
-            
-            var body: some View {
-                Button(action: {
-                    showModulePicker = true
-                }) {
-                    Group {
-                        if slotIndex < node.modules.count, let module = node.modules[slotIndex] {
-                            ModuleIcon(module: module, size: 12)
-                        } else {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.gray.opacity(0.3))
-                                .overlay(
-                                    Image(systemName: hasRestrictions ? "plus.circle" : "plus")
-                                        .font(.system(size: 6))
-                                        .foregroundStyle(hasRestrictions ? .orange : .secondary)
-                                )
-                                .frame(width: 12, height: 12)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-                .help(hasRestrictions ? "This recipe has module restrictions" : "Add module")
-                .sheet(isPresented: $showModulePicker) {
-                    ModulePicker(node: node, slotIndex: slotIndex)
-                }
-            }
-        }
-        
-        struct ModuleIcon: View {
-            var module: Module
-            var size: CGFloat = 18
-            
-            var body: some View {
-                Group {
-                    if let assetName = module.iconAsset {
-                        Image(assetName)
-                            .renderingMode(.original)
-                            .resizable()
-                            .interpolation(.none)
-                            .scaledToFit()
-                    } else {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(module.type.color.opacity(0.8))
-                            .overlay(
-                                Text(String(module.type.rawValue.first ?? "M"))
-                                    .font(.system(size: size * 0.5, weight: .bold))
-                                    .foregroundStyle(.white)
-                            )
-                    }
-                }
-                .frame(width: size, height: size)
-                .overlay(
                     RoundedRectangle(cornerRadius: 2)
-                        .stroke(module.quality.color, lineWidth: 1)
-                )
-                .hoverTooltip(module.displayName)
+                        .fill(Color.gray.opacity(0.3))
+                        .overlay(
+                            Image(systemName: hasRestrictions ? "plus.circle" : "plus")
+                                .font(.system(size: 6))
+                                .foregroundStyle(hasRestrictions ? .orange : .secondary)
+                        )
+                        .frame(width: 12, height: 12)
+                }
             }
         }
-        
-        struct ModuleStatsView: View {
-            var node: Node
-            
-            var body: some View {
-                VStack(spacing: 1) {
-                    if node.totalSpeedBonus != 0 {
-                        HStack(spacing: 2) {
-                            Image(systemName: "speedometer")
-                                .font(.system(size: 8))
-                            Text(formatBonus(node.totalSpeedBonus))
-                                .font(.system(size: 8))
-                                .monospacedDigit()
-                        }
-                        .foregroundStyle(node.totalSpeedBonus > 0 ? .green : .red)
-                    }
-                    
-                    if node.totalProductivityBonus != 0 {
-                        HStack(spacing: 2) {
-                            Image(systemName: "chart.line.uptrend.xyaxis")
-                                .font(.system(size: 8))
-                            Text(formatBonus(node.totalProductivityBonus))
-                                .font(.system(size: 8))
-                                .monospacedDigit()
-                        }
-                        .foregroundStyle(.orange)
-                    }
-                    
-                    if node.totalEfficiencyBonus != 0 {
-                        HStack(spacing: 2) {
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 8))
-                            Text(formatBonus(node.totalEfficiencyBonus))
-                                .font(.system(size: 8))
-                                .monospacedDigit()
-                        }
-                        .foregroundStyle(node.totalEfficiencyBonus > 0 ? .green : .red)
-                    }
-                }
-            }
-            
-            private func formatBonus(_ value: Double) -> String {
-                let percentage = value * 100
-                let sign = percentage >= 0 ? "+" : ""
-                return "\(sign)\(Int(percentage))%"
+        .buttonStyle(.plain)
+        .help(hasRestrictions ? "This recipe has module restrictions" : "Add module")
+        .sheet(isPresented: $showModulePicker) {
+            ModulePicker(node: node, slotIndex: slotIndex)
+        }
+    }
+}
+
+struct ModuleIcon: View {
+    var module: Module
+    var size: CGFloat = 18
+    
+    var body: some View {
+        Group {
+            if let assetName = module.iconAsset {
+                Image(assetName)
+                    .renderingMode(.original)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+            } else {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(module.type.color.opacity(0.8))
+                    .overlay(
+                        Text(String(module.type.rawValue.first ?? "M"))
+                            .font(.system(size: size * 0.5, weight: .bold))
+                            .foregroundStyle(.white)
+                    )
             }
         }
-        
-        // MARK: - Fixed Module Picker Component
-        
-        struct ModulePicker: View {
-            @EnvironmentObject var graph: GraphState
-            var node: Node
-            var slotIndex: Int
-            @Environment(\.dismiss) private var dismiss
-            @State private var selectedType: ModuleType = .speed
-            @State private var selectedLevel: Int = 1
-            @State private var selectedQuality: Quality = .normal
-            
-            private var nodeRecipe: Recipe? {
-                RECIPES.first(where: { $0.id == node.recipeID })
-            }
-            
-            var body: some View {
-                VStack(spacing: 16) {
-                    HStack {
-                        Text("Choose Module")
-                            .font(.headline)
-                        Spacer()
-                        Button("Close") {
-                            dismiss()
-                        }
-                    }
-                    
-                    // Show recipe name for context
-                    if let recipe = nodeRecipe {
-                        Text("For: \(recipe.name)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    
-                    // Type picker
-                    Picker("Module Type", selection: $selectedType) {
-                        ForEach(ModuleType.allCases, id: \.self) { type in
-                            Text(type.rawValue).tag(type)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    // Show warning if module type is restricted
-                    if let recipe = nodeRecipe, let testModule = currentModule {
-                        if !canUseModule(testModule, forRecipe: recipe) {
-                            HStack {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.orange)
-                                if selectedType == .productivity {
-                                    Text("Productivity modules can only be used on recipes that produce intermediate products")
-                                } else if selectedType == .quality {
-                                    Text("Quality modules cannot be used on recipes that produce fluids")
-                                } else {
-                                    Text("This module type cannot be used with this recipe")
-                                }
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.orange.opacity(0.1))
-                            .cornerRadius(4)
-                        }
-                    }
-                    
-                    // Level picker
-                    HStack {
-                        Text("Level:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        
-                        Picker("Level", selection: $selectedLevel) {
-                            ForEach(availableLevels, id: \.self) { level in
-                                Text("\(level)").tag(level)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 60)
-                        
-                        Spacer()
-                        
-                        Text("Quality:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        
-                        Picker("Quality", selection: $selectedQuality) {
-                            ForEach(Quality.allCases, id: \.self) { quality in
-                                HStack {
-                                    Circle()
-                                        .fill(quality.color)
-                                        .frame(width: 8, height: 8)
-                                    Text(quality.rawValue)
-                                }
-                                .tag(quality)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(width: 120)
-                    }
-                    
-                    // Module preview
-                    if let selectedModule = currentModule {
-                        ModulePreview(module: selectedModule)
-                    }
-                    
-                    Spacer()
-                    
-                    // Action buttons
-                    HStack {
-                        Button("Remove Module") {
-                            removeModule()
-                        }
-                        .disabled(slotIndex >= node.modules.count || node.modules[slotIndex] == nil)
-                        .buttonStyle(.bordered)
-                        
-                        Spacer()
-                        
-                        Button("Install Module") {
-                            if let module = currentModule {
-                                installModule(module)
-                            }
-                        }
-                        .disabled(!canInstallCurrentModule)
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-                .padding()
-                .frame(width: 400, height: 380)
-                .onAppear {
-                    // Load current module if exists
-                    if slotIndex < node.modules.count, let currentMod = node.modules[slotIndex] {
-                        selectedType = currentMod.type
-                        selectedLevel = currentMod.level
-                        selectedQuality = currentMod.quality
-                    }
-                }
-            }
-            
-            private var availableLevels: [Int] {
-                let levels = MODULES
-                    .filter { $0.type == selectedType }
-                    .map { $0.level }
-                return Array(Set(levels)).sorted()
-            }
-            
-            private var currentModule: Module? {
-                return MODULES.first { module in
-                    module.type == selectedType &&
-                    module.level == selectedLevel &&
-                    module.quality == selectedQuality
-                }
-            }
-            
-            private var canInstallCurrentModule: Bool {
-                guard let module = currentModule,
-                      let recipe = nodeRecipe else {
-                    return false
-                }
-                return canUseModule(module, forRecipe: recipe)
-            }
-            
-            private func installModule(_ module: Module) {
-                guard let recipe = nodeRecipe,
-                      canUseModule(module, forRecipe: recipe) else {
-                    return
-                }
-                
-                var updatedNode = node
-                
-                // Ensure modules array is large enough
-                while updatedNode.modules.count <= slotIndex {
-                    updatedNode.modules.append(nil)
-                }
-                
-                updatedNode.modules[slotIndex] = module
-                
-                // FIXED: Use graph's updateNode method
-                graph.updateNode(updatedNode)
-                dismiss()
-            }
-            
-            private func removeModule() {
-                var updatedNode = node
-                if slotIndex < updatedNode.modules.count {
-                    updatedNode.modules[slotIndex] = nil
-                }
-                
-                // FIXED: Use graph's updateNode method
-                graph.updateNode(updatedNode)
-                dismiss()
-            }
-        }
-        
-        struct ModulePreview: View {
-            var module: Module
-            
-            var body: some View {
-                VStack(spacing: 8) {
-                    HStack {
-                        ModuleIcon(module: module, size: 24)
-                        VStack(alignment: .leading) {
-                            Text(module.name)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                            Text("\(module.quality.rawValue) Quality")
-                                .font(.caption)
-                                .foregroundStyle(module.quality.color)
-                        }
-                        Spacer()
-                    }
-                    
-                    Divider()
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        if module.speedBonus != 0 {
-                            StatRow(label: "Speed", value: module.speedBonus)
-                        }
-                        if module.productivityBonus != 0 {
-                            StatRow(label: "Productivity", value: module.productivityBonus)
-                        }
-                        if module.efficiencyBonus != 0 {
-                            StatRow(label: "Efficiency", value: module.efficiencyBonus)
-                        }
-                    }
-                }
-                .padding()
-                .background(Color.black.opacity(0.1))
-                .cornerRadius(8)
-            }
-        }
-        
-        struct StatRow: View {
-            var label: String
-            var value: Double
-            
-            var body: some View {
-                HStack {
-                    Text(label)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(formatValue(value))
-                        .font(.caption)
-                        .foregroundStyle(value >= 0 ? .green : .red)
+        .frame(width: size, height: size)
+        .overlay(
+            RoundedRectangle(cornerRadius: 2)
+                .stroke(module.quality.color, lineWidth: 1)
+        )
+        .hoverTooltip(module.displayName)
+    }
+}
+
+struct ModuleStatsView: View {
+    var node: Node
+    
+    var body: some View {
+        VStack(spacing: 1) {
+            if node.totalSpeedBonus != 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "speedometer")
+                        .font(.system(size: 8))
+                    Text(formatBonus(node.totalSpeedBonus))
+                        .font(.system(size: 8))
                         .monospacedDigit()
                 }
+                .foregroundStyle(node.totalSpeedBonus > 0 ? .green : .red)
             }
             
-            private func formatValue(_ value: Double) -> String {
-                let percentage = value * 100
-                let sign = percentage >= 0 ? "+" : ""
-                return String(format: "\(sign)%.1f%%", percentage)
+            if node.totalProductivityBonus != 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 8))
+                    Text(formatBonus(node.totalProductivityBonus))
+                        .font(.system(size: 8))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(.orange)
+            }
+            
+            if node.totalEfficiencyBonus != 0 {
+                HStack(spacing: 2) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 8))
+                    Text(formatBonus(node.totalEfficiencyBonus))
+                        .font(.system(size: 8))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(node.totalEfficiencyBonus > 0 ? .green : .red)
             }
         }
+    }
+    
+    private func formatBonus(_ value: Double) -> String {
+        let percentage = value * 100
+        let sign = percentage >= 0 ? "+" : ""
+        return "\(sign)\(Int(percentage))%"
+    }
+}
+
+struct ModulePicker: View {
+    @EnvironmentObject var graph: GraphState
+    var node: Node
+    var slotIndex: Int
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedType: ModuleType = .speed
+    @State private var selectedLevel: Int = 1
+    @State private var selectedQuality: Quality = .normal
+    
+    private var nodeRecipe: Recipe? {
+        RECIPES.first(where: { $0.id == node.recipeID })
+    }
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Choose Module")
+                    .font(.headline)
+                Spacer()
+                Button("Close") {
+                    dismiss()
+                }
+            }
+            
+            // Show recipe name for context
+            if let recipe = nodeRecipe {
+                Text("For: \(recipe.name)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            // Type picker
+            Picker("Module Type", selection: $selectedType) {
+                ForEach(ModuleType.allCases, id: \.self) { type in
+                    Text(type.rawValue).tag(type)
+                }
+            }
+            .pickerStyle(.segmented)
+            
+            // Show warning if module type is restricted
+            if let recipe = nodeRecipe, let testModule = currentModule {
+                if !canUseModule(testModule, forRecipe: recipe) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        if selectedType == .productivity {
+                            Text("Productivity modules can only be used on recipes that produce intermediate products")
+                        } else if selectedType == .quality {
+                            Text("Quality modules cannot be used on recipes that produce fluids")
+                        } else {
+                            Text("This module type cannot be used with this recipe")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(4)
+                }
+            }
+            
+            // Level picker
+            HStack {
+                Text("Level:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Picker("Level", selection: $selectedLevel) {
+                    ForEach(availableLevels, id: \.self) { level in
+                        Text("\(level)").tag(level)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 60)
+                
+                Spacer()
+                
+                Text("Quality:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Picker("Quality", selection: $selectedQuality) {
+                    ForEach(Quality.allCases, id: \.self) { quality in
+                        HStack {
+                            Circle()
+                                .fill(quality.color)
+                                .frame(width: 8, height: 8)
+                            Text(quality.rawValue)
+                        }
+                        .tag(quality)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 120)
+            }
+            
+            // Module preview
+            if let selectedModule = currentModule {
+                ModulePreview(module: selectedModule)
+            }
+            
+            Spacer()
+            
+            // Action buttons
+            HStack {
+                Button("Remove Module") {
+                    removeModule()
+                }
+                .disabled(slotIndex >= node.modules.count || node.modules[slotIndex] == nil)
+                .buttonStyle(.bordered)
+                
+                Spacer()
+                
+                Button("Install Module") {
+                    if let module = currentModule {
+                        installModule(module)
+                    }
+                }
+                .disabled(!canInstallCurrentModule)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding()
+        .frame(width: 400, height: 380) // Slightly taller to accommodate warning
+        .onAppear {
+            // Load current module if exists
+            if slotIndex < node.modules.count, let currentMod = node.modules[slotIndex] {
+                selectedType = currentMod.type
+                selectedLevel = currentMod.level
+                selectedQuality = currentMod.quality
+            }
+        }
+    }
+    
+    private var availableLevels: [Int] {
+        let levels = MODULES
+            .filter { $0.type == selectedType }
+            .map { $0.level }
+        return Array(Set(levels)).sorted()
+    }
+    
+    private var currentModule: Module? {
+        return MODULES.first { module in
+            module.type == selectedType &&
+            module.level == selectedLevel &&
+            module.quality == selectedQuality
+        }
+    }
+    
+    private var canInstallCurrentModule: Bool {
+        guard let module = currentModule,
+              let recipe = nodeRecipe else {
+            return false
+        }
+        return canUseModule(module, forRecipe: recipe)
+    }
+    
+    private func installModule(_ module: Module) {
+        guard let recipe = nodeRecipe,
+              canUseModule(module, forRecipe: recipe) else {
+            return
+        }
+        
+        var updatedNode = node
+        
+        // Ensure modules array is large enough
+        while updatedNode.modules.count <= slotIndex {
+            updatedNode.modules.append(nil)
+        }
+        
+        updatedNode.modules[slotIndex] = module
+        graph.updateNode(updatedNode)
+        dismiss()
+    }
+    
+    private func removeModule() {
+        var updatedNode = node
+        if slotIndex < updatedNode.modules.count {
+            updatedNode.modules[slotIndex] = nil
+        }
+        graph.updateNode(updatedNode)
+        dismiss()
+    }
+}
+
+
+struct ModulePreview: View {
+    var module: Module
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                ModuleIcon(module: module, size: 24)
+                VStack(alignment: .leading) {
+                    Text(module.name)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text("\(module.quality.rawValue) Quality")
+                        .font(.caption)
+                        .foregroundStyle(module.quality.color)
+                }
+                Spacer()
+            }
+            
+            Divider()
+            
+            VStack(alignment: .leading, spacing: 4) {
+                if module.speedBonus != 0 {
+                    StatRow(label: "Speed", value: module.speedBonus)
+                }
+                if module.productivityBonus != 0 {
+                    StatRow(label: "Productivity", value: module.productivityBonus)
+                }
+                if module.efficiencyBonus != 0 {
+                    StatRow(label: "Efficiency", value: module.efficiencyBonus)
+                }
+            }
+        }
+        .padding()
+        .background(Color.black.opacity(0.1))
+        .cornerRadius(8)
+    }
+}
+
+struct StatRow: View {
+    var label: String
+    var value: Double
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(formatValue(value))
+                .font(.caption)
+                .foregroundStyle(value >= 0 ? .green : .red)
+                .monospacedDigit()
+        }
+    }
+    
+    private func formatValue(_ value: Double) -> String {
+        let percentage = value * 100
+        let sign = percentage >= 0 ? "+" : ""
+        return String(format: "\(sign)%.1f%%", percentage)
+    }
+}

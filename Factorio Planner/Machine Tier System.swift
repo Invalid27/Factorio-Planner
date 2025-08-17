@@ -1,8 +1,9 @@
-//
-//  Machine Tier System.swift
-//  Factorio Planner
-//
-//  Created by Daniel on 8/17/25.
-//
-
-import Foundation
+// MARK: - Machine Tier System
+struct MachineTier: Identifiable, Codable, Hashable {
+    let id: String
+    let name: String
+    let category: String
+    let speed: Double
+    let iconAsset: String?
+    let moduleSlots: Int
+}

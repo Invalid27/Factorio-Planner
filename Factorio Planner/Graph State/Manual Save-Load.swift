@@ -1,8 +1,19 @@
-//
-//  Manual Save:Load.swift
-//  Factorio Planner
-//
-//  Created by Daniel on 8/17/25.
-//
+// MARK: - Manual Save/Load/Clear (FIXED)
 
-import Foundation
+func clearGraph() {
+    // Temporarily disable auto-save
+    saveTimer?.invalidate()
+    
+    nodes.removeAll()
+    edges.removeAll()
+    selectedNodeIDs.removeAll()
+    
+    // Re-enable auto-save and compute
+    DispatchQueue.main.async {
+        self.computeFlows()
+    }
+}
+
+func hasAutoSave() -> Bool {
+    return UserDefaults.standard.data(forKey: "FactorioPlannerAutoSave") != nil
+}

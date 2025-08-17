@@ -30,7 +30,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		65E60F902E4E92F60078CE8E /* Exceptions for "Factorio Planner" folder in "Factorio Planner" target */ = {
+		65E62E712E526B83003C6DE9 /* Exceptions for "Backups" folder in "Factorio Planner" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				"MySwiftFile.?????",
@@ -57,7 +57,7 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		65E60F912E4E92F60078CE8E /* Exceptions for "Factorio Planner" folder in "Compile Sources" phase from "Factorio Planner" target */ = {
+		65E62E722E526B83003C6DE9 /* Exceptions for "Backups" folder in "Compile Sources" phase from "Factorio Planner" target */ = {
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			buildPhase = 65CB440A2E4D44DE001233B7 /* Sources */;
 			membershipExceptions = (
@@ -86,10 +86,6 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		65CB44102E4D44DE001233B7 /* Factorio Planner */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				65E60F902E4E92F60078CE8E /* Exceptions for "Factorio Planner" folder in "Factorio Planner" target */,
-				65E60F912E4E92F60078CE8E /* Exceptions for "Factorio Planner" folder in "Compile Sources" phase from "Factorio Planner" target */,
-			);
 			path = "Factorio Planner";
 			sourceTree = "<group>";
 		};
@@ -101,6 +97,15 @@
 		65CB44292E4D44DF001233B7 /* Factorio PlannerUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Factorio PlannerUITests";
+			sourceTree = "<group>";
+		};
+		65E62E702E526B7C003C6DE9 /* Backups */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				65E62E712E526B83003C6DE9 /* Exceptions for "Backups" folder in "Factorio Planner" target */,
+				65E62E722E526B83003C6DE9 /* Exceptions for "Backups" folder in "Compile Sources" phase from "Factorio Planner" target */,
+			);
+			path = Backups;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -133,6 +138,7 @@
 		65CB44052E4D44DE001233B7 = {
 			isa = PBXGroup;
 			children = (
+				65E62E702E526B7C003C6DE9 /* Backups */,
 				65CB44102E4D44DE001233B7 /* Factorio Planner */,
 				65CB441F2E4D44DF001233B7 /* Factorio PlannerTests */,
 				65CB44292E4D44DF001233B7 /* Factorio PlannerUITests */,
@@ -167,6 +173,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				65CB44102E4D44DE001233B7 /* Factorio Planner */,
+				65E62E702E526B7C003C6DE9 /* Backups */,
 			);
 			name = "Factorio Planner";
 			packageProductDependencies = (
