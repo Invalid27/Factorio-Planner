@@ -7,51 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		65E62E6F2E526B75003C6DE9 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E6E2E526B75003C6DE9 /* Constants.swift */; };
-		65E62E762E526BAE003C6DE9 /* IntermediateProducts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E752E526BAE003C6DE9 /* IntermediateProducts.swift */; };
-		65E62E782E526BD1003C6DE9 /* PortRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E772E526BD1003C6DE9 /* PortRow.swift */; };
-		65E62E7A2E526C01003C6DE9 /* IconComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E792E526C01003C6DE9 /* IconComponents.swift */; };
-		65E62E7E2E526C25003C6DE9 /* Tooltip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E7D2E526C25003C6DE9 /* Tooltip.swift */; };
-		65E62E822E526C3B003C6DE9 /* WireRendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E812E526C3B003C6DE9 /* WireRendering.swift */; };
-		65E62E862E526C56003C6DE9 /* GeneralRecipePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E852E526C56003C6DE9 /* GeneralRecipePicker.swift */; };
-		65E62E8A2E526C85003C6DE9 /* RecipePortPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E892E526C85003C6DE9 /* RecipePortPicker.swift */; };
-		65E62E8E2E526C96003C6DE9 /* UtilityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E8D2E526C96003C6DE9 /* UtilityView.swift */; };
-		65E62E902E526CA9003C6DE9 /* ModuleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E8F2E526CA9003C6DE9 /* ModuleSystem.swift */; };
-		65E62E922E526CC7003C6DE9 /* MachineTierSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E912E526CC7003C6DE9 /* MachineTierSystem.swift */; };
-		65E62E962E526CE1003C6DE9 /* MachinePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E952E526CE1003C6DE9 /* MachinePreferences.swift */; };
-		65E62E982E526CF6003C6DE9 /* MachineTiersData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E972E526CF6003C6DE9 /* MachineTiersData.swift */; };
-		65E62E9A2E526D12003C6DE9 /* AvailableModules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E992E526D12003C6DE9 /* AvailableModules.swift */; };
-		65E62E9C2E526D1E003C6DE9 /* RecipeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E9B2E526D1E003C6DE9 /* RecipeModel.swift */; };
-		65E62E9E2E526D44003C6DE9 /* RecipesData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E9D2E526D44003C6DE9 /* RecipesData.swift */; };
-		65E62EA02E526D5D003C6DE9 /* IconAssets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62E9F2E526D5D003C6DE9 /* IconAssets.swift */; };
-		65E62EA22E526D87003C6DE9 /* ItemMappings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EA12E526D87003C6DE9 /* ItemMappings.swift */; };
-		65E62EA42E526D9B003C6DE9 /* NodeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EA32E526D9B003C6DE9 /* NodeModel.swift */; };
-		65E62EA62E526DA9003C6DE9 /* EdgeModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EA52E526DA9003C6DE9 /* EdgeModel.swift */; };
-		65E62EA82E526DB4003C6DE9 /* PortKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EA72E526DB4003C6DE9 /* PortKey.swift */; };
-		65E62EAB2E526DE8003C6DE9 /* HelperFunctions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EAA2E526DE8003C6DE9 /* HelperFunctions.swift */; };
-		65E62EAE2E526E68003C6DE9 /* GraphState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EAD2E526E68003C6DE9 /* GraphState.swift */; };
-		65E62EB22E526E77003C6DE9 /* AutoSave.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EB12E526E77003C6DE9 /* AutoSave.swift */; };
-		65E62EB42E526E86003C6DE9 /* NodeManagement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EB32E526E86003C6DE9 /* NodeManagement.swift */; };
-		65E62EB62E526E96003C6DE9 /* FlowComputation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EB52E526E96003C6DE9 /* FlowComputation.swift */; };
-		65E62EB82E526EA6003C6DE9 /* SelectionandClipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EB72E526EA6003C6DE9 /* SelectionandClipboard.swift */; };
-		65E62EBA2E526EB6003C6DE9 /* ManualSaveLoad.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EB92E526EB6003C6DE9 /* ManualSaveLoad.swift */; };
-		65E62EBE2E526ECB003C6DE9 /* ImportExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EBD2E526ECB003C6DE9 /* ImportExport.swift */; };
-		65E62EC02E526EDC003C6DE9 /* SelectionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EBF2E526EDC003C6DE9 /* SelectionOverlay.swift */; };
-		65E62EC22E526EF1003C6DE9 /* SupportingTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EC12E526EF1003C6DE9 /* SupportingTypes.swift */; };
-		65E62EC42E526F02003C6DE9 /* PlannerRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EC32E526F02003C6DE9 /* PlannerRoot.swift */; };
-		65E62EC82E526F11003C6DE9 /* TopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EC72E526F11003C6DE9 /* TopBar.swift */; };
-		65E62ECA2E526F24003C6DE9 /* CanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EC92E526F24003C6DE9 /* CanvasView.swift */; };
-		65E62ECC2E526F41003C6DE9 /* ScrollWheelHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62ECB2E526F41003C6DE9 /* ScrollWheelHandler.swift */; };
-		65E62ED02E526F65003C6DE9 /* SimpleMouseTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62ECF2E526F65003C6DE9 /* SimpleMouseTracker.swift */; };
-		65E62ED22E526F79003C6DE9 /* NodeCardComponent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62ED12E526F79003C6DE9 /* NodeCardComponent.swift */; };
-		65E62ED62E526F89003C6DE9 /* MachineIconComponent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62ED52E526F89003C6DE9 /* MachineIconComponent.swift */; };
-		65E62ED82E526FAA003C6DE9 /* ModuleUIComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62ED72E526FAA003C6DE9 /* ModuleUIComponents.swift */; };
-		65E62EDA2E526FBF003C6DE9 /* ModulePickerComponent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62ED92E526FBF003C6DE9 /* ModulePickerComponent.swift */; };
-		65E62EDE2E5275C0003C6DE9 /* Optimizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EDD2E5275C0003C6DE9 /* Optimizer.swift */; };
-		65E62EE02E5275DB003C6DE9 /* StatisticsDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EDF2E5275DB003C6DE9 /* StatisticsDashboardView.swift */; };
-		65E62EE22E5275F9003C6DE9 /* KeyboardShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EE12E5275F9003C6DE9 /* KeyboardShortcuts.swift */; };
-		65E62EE42E527731003C6DE9 /* NodeCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EE32E527731003C6DE9 /* NodeCard.swift */; };
-		65E62EE62E52962D003C6DE9 /* FactorioPlannerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EE52E52962D003C6DE9 /* FactorioPlannerApp.swift */; };
+		65E62EEA2E5299F0003C6DE9 /* FactorioPlannerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EE92E5299F0003C6DE9 /* FactorioPlannerApp.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,51 +31,7 @@
 		65CB440E2E4D44DE001233B7 /* Factorio Planner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Factorio Planner.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		65CB441C2E4D44DF001233B7 /* Factorio PlannerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Factorio PlannerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		65CB44262E4D44DF001233B7 /* Factorio PlannerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Factorio PlannerUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		65E62E6E2E526B75003C6DE9 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
-		65E62E752E526BAE003C6DE9 /* IntermediateProducts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntermediateProducts.swift; sourceTree = "<group>"; };
-		65E62E772E526BD1003C6DE9 /* PortRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortRow.swift; sourceTree = "<group>"; };
-		65E62E792E526C01003C6DE9 /* IconComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconComponents.swift; sourceTree = "<group>"; };
-		65E62E7D2E526C25003C6DE9 /* Tooltip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tooltip.swift; sourceTree = "<group>"; };
-		65E62E812E526C3B003C6DE9 /* WireRendering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireRendering.swift; sourceTree = "<group>"; };
-		65E62E852E526C56003C6DE9 /* GeneralRecipePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralRecipePicker.swift; sourceTree = "<group>"; };
-		65E62E892E526C85003C6DE9 /* RecipePortPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipePortPicker.swift; sourceTree = "<group>"; };
-		65E62E8D2E526C96003C6DE9 /* UtilityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilityView.swift; sourceTree = "<group>"; };
-		65E62E8F2E526CA9003C6DE9 /* ModuleSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModuleSystem.swift; sourceTree = "<group>"; };
-		65E62E912E526CC7003C6DE9 /* MachineTierSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MachineTierSystem.swift; sourceTree = "<group>"; };
-		65E62E952E526CE1003C6DE9 /* MachinePreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MachinePreferences.swift; sourceTree = "<group>"; };
-		65E62E972E526CF6003C6DE9 /* MachineTiersData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MachineTiersData.swift; sourceTree = "<group>"; };
-		65E62E992E526D12003C6DE9 /* AvailableModules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvailableModules.swift; sourceTree = "<group>"; };
-		65E62E9B2E526D1E003C6DE9 /* RecipeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeModel.swift; sourceTree = "<group>"; };
-		65E62E9D2E526D44003C6DE9 /* RecipesData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipesData.swift; sourceTree = "<group>"; };
-		65E62E9F2E526D5D003C6DE9 /* IconAssets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconAssets.swift; sourceTree = "<group>"; };
-		65E62EA12E526D87003C6DE9 /* ItemMappings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemMappings.swift; sourceTree = "<group>"; };
-		65E62EA32E526D9B003C6DE9 /* NodeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeModel.swift; sourceTree = "<group>"; };
-		65E62EA52E526DA9003C6DE9 /* EdgeModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeModel.swift; sourceTree = "<group>"; };
-		65E62EA72E526DB4003C6DE9 /* PortKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortKey.swift; sourceTree = "<group>"; };
-		65E62EAA2E526DE8003C6DE9 /* HelperFunctions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperFunctions.swift; sourceTree = "<group>"; };
-		65E62EAD2E526E68003C6DE9 /* GraphState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphState.swift; sourceTree = "<group>"; };
-		65E62EB12E526E77003C6DE9 /* AutoSave.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoSave.swift; sourceTree = "<group>"; };
-		65E62EB32E526E86003C6DE9 /* NodeManagement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeManagement.swift; sourceTree = "<group>"; };
-		65E62EB52E526E96003C6DE9 /* FlowComputation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowComputation.swift; sourceTree = "<group>"; };
-		65E62EB72E526EA6003C6DE9 /* SelectionandClipboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionandClipboard.swift; sourceTree = "<group>"; };
-		65E62EB92E526EB6003C6DE9 /* ManualSaveLoad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualSaveLoad.swift; sourceTree = "<group>"; };
-		65E62EBD2E526ECB003C6DE9 /* ImportExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportExport.swift; sourceTree = "<group>"; };
-		65E62EBF2E526EDC003C6DE9 /* SelectionOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionOverlay.swift; sourceTree = "<group>"; };
-		65E62EC12E526EF1003C6DE9 /* SupportingTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportingTypes.swift; sourceTree = "<group>"; };
-		65E62EC32E526F02003C6DE9 /* PlannerRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerRoot.swift; sourceTree = "<group>"; };
-		65E62EC72E526F11003C6DE9 /* TopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopBar.swift; sourceTree = "<group>"; };
-		65E62EC92E526F24003C6DE9 /* CanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasView.swift; sourceTree = "<group>"; };
-		65E62ECB2E526F41003C6DE9 /* ScrollWheelHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrollWheelHandler.swift; sourceTree = "<group>"; };
-		65E62ECF2E526F65003C6DE9 /* SimpleMouseTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleMouseTracker.swift; sourceTree = "<group>"; };
-		65E62ED12E526F79003C6DE9 /* NodeCardComponent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeCardComponent.swift; sourceTree = "<group>"; };
-		65E62ED52E526F89003C6DE9 /* MachineIconComponent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MachineIconComponent.swift; sourceTree = "<group>"; };
-		65E62ED72E526FAA003C6DE9 /* ModuleUIComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModuleUIComponents.swift; sourceTree = "<group>"; };
-		65E62ED92E526FBF003C6DE9 /* ModulePickerComponent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModulePickerComponent.swift; sourceTree = "<group>"; };
-		65E62EDD2E5275C0003C6DE9 /* Optimizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Optimizer.swift; sourceTree = "<group>"; };
-		65E62EDF2E5275DB003C6DE9 /* StatisticsDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatisticsDashboardView.swift; sourceTree = "<group>"; };
-		65E62EE12E5275F9003C6DE9 /* KeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcuts.swift; sourceTree = "<group>"; };
-		65E62EE32E527731003C6DE9 /* NodeCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeCard.swift; sourceTree = "<group>"; };
-		65E62EE52E52962D003C6DE9 /* FactorioPlannerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorioPlannerApp.swift; sourceTree = "<group>"; };
+		65E62EE92E5299F0003C6DE9 /* FactorioPlannerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorioPlannerApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -236,51 +148,7 @@
 				65CB441F2E4D44DF001233B7 /* Factorio PlannerTests */,
 				65CB44292E4D44DF001233B7 /* Factorio PlannerUITests */,
 				65CB440F2E4D44DE001233B7 /* Products */,
-				65E62EB12E526E77003C6DE9 /* AutoSave.swift */,
-				65E62E992E526D12003C6DE9 /* AvailableModules.swift */,
-				65E62EC92E526F24003C6DE9 /* CanvasView.swift */,
-				65E62E6E2E526B75003C6DE9 /* Constants.swift */,
-				65E62EE52E52962D003C6DE9 /* FactorioPlannerApp.swift */,
-				65E62EA52E526DA9003C6DE9 /* EdgeModel.swift */,
-				65E62EB52E526E96003C6DE9 /* FlowComputation.swift */,
-				65E62E852E526C56003C6DE9 /* GeneralRecipePicker.swift */,
-				65E62EAD2E526E68003C6DE9 /* GraphState.swift */,
-				65E62EAA2E526DE8003C6DE9 /* HelperFunctions.swift */,
-				65E62E9F2E526D5D003C6DE9 /* IconAssets.swift */,
-				65E62E792E526C01003C6DE9 /* IconComponents.swift */,
-				65E62EBD2E526ECB003C6DE9 /* ImportExport.swift */,
-				65E62E752E526BAE003C6DE9 /* IntermediateProducts.swift */,
-				65E62EA12E526D87003C6DE9 /* ItemMappings.swift */,
-				65E62EE12E5275F9003C6DE9 /* KeyboardShortcuts.swift */,
-				65E62ED52E526F89003C6DE9 /* MachineIconComponent.swift */,
-				65E62E952E526CE1003C6DE9 /* MachinePreferences.swift */,
-				65E62E972E526CF6003C6DE9 /* MachineTiersData.swift */,
-				65E62E912E526CC7003C6DE9 /* MachineTierSystem.swift */,
-				65E62EB92E526EB6003C6DE9 /* ManualSaveLoad.swift */,
-				65E62ED92E526FBF003C6DE9 /* ModulePickerComponent.swift */,
-				65E62E8F2E526CA9003C6DE9 /* ModuleSystem.swift */,
-				65E62ED72E526FAA003C6DE9 /* ModuleUIComponents.swift */,
-				65E62EE32E527731003C6DE9 /* NodeCard.swift */,
-				65E62ED12E526F79003C6DE9 /* NodeCardComponent.swift */,
-				65E62EB32E526E86003C6DE9 /* NodeManagement.swift */,
-				65E62EA32E526D9B003C6DE9 /* NodeModel.swift */,
-				65E62EDD2E5275C0003C6DE9 /* Optimizer.swift */,
-				65E62EC32E526F02003C6DE9 /* PlannerRoot.swift */,
-				65E62EA72E526DB4003C6DE9 /* PortKey.swift */,
-				65E62E772E526BD1003C6DE9 /* PortRow.swift */,
-				65E62E9B2E526D1E003C6DE9 /* RecipeModel.swift */,
-				65E62E892E526C85003C6DE9 /* RecipePortPicker.swift */,
-				65E62E9D2E526D44003C6DE9 /* RecipesData.swift */,
-				65E62ECB2E526F41003C6DE9 /* ScrollWheelHandler.swift */,
-				65E62EB72E526EA6003C6DE9 /* SelectionandClipboard.swift */,
-				65E62EBF2E526EDC003C6DE9 /* SelectionOverlay.swift */,
-				65E62ECF2E526F65003C6DE9 /* SimpleMouseTracker.swift */,
-				65E62EDF2E5275DB003C6DE9 /* StatisticsDashboardView.swift */,
-				65E62EC12E526EF1003C6DE9 /* SupportingTypes.swift */,
-				65E62E7D2E526C25003C6DE9 /* Tooltip.swift */,
-				65E62EC72E526F11003C6DE9 /* TopBar.swift */,
-				65E62E8D2E526C96003C6DE9 /* UtilityView.swift */,
-				65E62E812E526C3B003C6DE9 /* WireRendering.swift */,
+				65E62EE92E5299F0003C6DE9 /* FactorioPlannerApp.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -440,51 +308,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				65E62E9C2E526D1E003C6DE9 /* RecipeModel.swift in Sources */,
-				65E62E8E2E526C96003C6DE9 /* UtilityView.swift in Sources */,
-				65E62E962E526CE1003C6DE9 /* MachinePreferences.swift in Sources */,
-				65E62E822E526C3B003C6DE9 /* WireRendering.swift in Sources */,
-				65E62EA42E526D9B003C6DE9 /* NodeModel.swift in Sources */,
-				65E62E762E526BAE003C6DE9 /* IntermediateProducts.swift in Sources */,
-				65E62EC82E526F11003C6DE9 /* TopBar.swift in Sources */,
-				65E62EBE2E526ECB003C6DE9 /* ImportExport.swift in Sources */,
-				65E62E902E526CA9003C6DE9 /* ModuleSystem.swift in Sources */,
-				65E62EB22E526E77003C6DE9 /* AutoSave.swift in Sources */,
-				65E62EC22E526EF1003C6DE9 /* SupportingTypes.swift in Sources */,
-				65E62EAE2E526E68003C6DE9 /* GraphState.swift in Sources */,
-				65E62EE22E5275F9003C6DE9 /* KeyboardShortcuts.swift in Sources */,
-				65E62E982E526CF6003C6DE9 /* MachineTiersData.swift in Sources */,
-				65E62E7A2E526C01003C6DE9 /* IconComponents.swift in Sources */,
-				65E62EE42E527731003C6DE9 /* NodeCard.swift in Sources */,
-				65E62EB42E526E86003C6DE9 /* NodeManagement.swift in Sources */,
-				65E62EC02E526EDC003C6DE9 /* SelectionOverlay.swift in Sources */,
-				65E62EBA2E526EB6003C6DE9 /* ManualSaveLoad.swift in Sources */,
-				65E62EC42E526F02003C6DE9 /* PlannerRoot.swift in Sources */,
-				65E62E922E526CC7003C6DE9 /* MachineTierSystem.swift in Sources */,
-				65E62E7E2E526C25003C6DE9 /* Tooltip.swift in Sources */,
-				65E62EA22E526D87003C6DE9 /* ItemMappings.swift in Sources */,
-				65E62EDA2E526FBF003C6DE9 /* ModulePickerComponent.swift in Sources */,
-				65E62ECC2E526F41003C6DE9 /* ScrollWheelHandler.swift in Sources */,
-				65E62E8A2E526C85003C6DE9 /* RecipePortPicker.swift in Sources */,
-				65E62EAB2E526DE8003C6DE9 /* HelperFunctions.swift in Sources */,
-				65E62EB62E526E96003C6DE9 /* FlowComputation.swift in Sources */,
-				65E62E9A2E526D12003C6DE9 /* AvailableModules.swift in Sources */,
-				65E62ECA2E526F24003C6DE9 /* CanvasView.swift in Sources */,
-				65E62E9E2E526D44003C6DE9 /* RecipesData.swift in Sources */,
-				65E62EDE2E5275C0003C6DE9 /* Optimizer.swift in Sources */,
-				65E62EA62E526DA9003C6DE9 /* EdgeModel.swift in Sources */,
-				65E62E782E526BD1003C6DE9 /* PortRow.swift in Sources */,
-				65E62EE02E5275DB003C6DE9 /* StatisticsDashboardView.swift in Sources */,
-				65E62ED82E526FAA003C6DE9 /* ModuleUIComponents.swift in Sources */,
-				65E62ED02E526F65003C6DE9 /* SimpleMouseTracker.swift in Sources */,
-				65E62EE62E52962D003C6DE9 /* FactorioPlannerApp.swift in Sources */,
-				65E62E862E526C56003C6DE9 /* GeneralRecipePicker.swift in Sources */,
-				65E62ED22E526F79003C6DE9 /* NodeCardComponent.swift in Sources */,
-				65E62E6F2E526B75003C6DE9 /* Constants.swift in Sources */,
-				65E62EA02E526D5D003C6DE9 /* IconAssets.swift in Sources */,
-				65E62ED62E526F89003C6DE9 /* MachineIconComponent.swift in Sources */,
-				65E62EA82E526DB4003C6DE9 /* PortKey.swift in Sources */,
-				65E62EB82E526EA6003C6DE9 /* SelectionandClipboard.swift in Sources */,
+				65E62EEA2E5299F0003C6DE9 /* FactorioPlannerApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
