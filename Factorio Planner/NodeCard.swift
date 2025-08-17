@@ -1,3 +1,11 @@
+//
+//  NodeCard.swift
+//  Factorio Planner
+//
+//  Created by Daniel on 8/17/25.
+//
+
+
 // Node Card Component.swift
 // Complete NodeCard with context menu functionality
 
