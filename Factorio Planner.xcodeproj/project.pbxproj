@@ -51,6 +51,7 @@
 		65E62EE02E5275DB003C6DE9 /* StatisticsDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EDF2E5275DB003C6DE9 /* StatisticsDashboardView.swift */; };
 		65E62EE22E5275F9003C6DE9 /* KeyboardShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EE12E5275F9003C6DE9 /* KeyboardShortcuts.swift */; };
 		65E62EE42E527731003C6DE9 /* NodeCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EE32E527731003C6DE9 /* NodeCard.swift */; };
+		65E62EE62E52962D003C6DE9 /* FactorioPlannerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EE52E52962D003C6DE9 /* FactorioPlannerApp.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -118,6 +119,7 @@
 		65E62EDF2E5275DB003C6DE9 /* StatisticsDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatisticsDashboardView.swift; sourceTree = "<group>"; };
 		65E62EE12E5275F9003C6DE9 /* KeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcuts.swift; sourceTree = "<group>"; };
 		65E62EE32E527731003C6DE9 /* NodeCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeCard.swift; sourceTree = "<group>"; };
+		65E62EE52E52962D003C6DE9 /* FactorioPlannerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorioPlannerApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -238,6 +240,7 @@
 				65E62E992E526D12003C6DE9 /* AvailableModules.swift */,
 				65E62EC92E526F24003C6DE9 /* CanvasView.swift */,
 				65E62E6E2E526B75003C6DE9 /* Constants.swift */,
+				65E62EE52E52962D003C6DE9 /* FactorioPlannerApp.swift */,
 				65E62EA52E526DA9003C6DE9 /* EdgeModel.swift */,
 				65E62EB52E526E96003C6DE9 /* FlowComputation.swift */,
 				65E62E852E526C56003C6DE9 /* GeneralRecipePicker.swift */,
@@ -474,6 +477,7 @@
 				65E62EE02E5275DB003C6DE9 /* StatisticsDashboardView.swift in Sources */,
 				65E62ED82E526FAA003C6DE9 /* ModuleUIComponents.swift in Sources */,
 				65E62ED02E526F65003C6DE9 /* SimpleMouseTracker.swift in Sources */,
+				65E62EE62E52962D003C6DE9 /* FactorioPlannerApp.swift in Sources */,
 				65E62E862E526C56003C6DE9 /* GeneralRecipePicker.swift in Sources */,
 				65E62ED22E526F79003C6DE9 /* NodeCardComponent.swift in Sources */,
 				65E62E6F2E526B75003C6DE9 /* Constants.swift in Sources */,
