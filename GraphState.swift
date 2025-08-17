@@ -1,4 +1,5 @@
-// Graph State.swift
+// GraphState.swift
+// CLEANED: Removed duplicate type definitions (they're in SupportingTypes.swift)
 import Foundation
 import SwiftUI
 
@@ -78,28 +79,5 @@ final class GraphState: ObservableObject, Codable {
     }
 }
 
-// MARK: - Supporting Types
-struct DragContext {
-    var fromPort: PortKey
-    var startPoint: CGPoint
-    var currentPoint: CGPoint
-}
-
-struct PickerContext {
-    var fromPort: PortKey
-    var dropPoint: CGPoint
-}
-
-// MARK: - Preference Keys
-struct PortFramesKey: PreferenceKey {
-    static var defaultValue: [PortFrame] = []
-    
-    static func reduce(value: inout [PortFrame], nextValue: () -> [PortFrame]) {
-        value.append(contentsOf: nextValue())
-    }
-}
-
-struct PortFrame: Equatable {
-    let key: PortKey
-    let frame: CGRect
-}
+// Note: DragContext, PickerContext, PortFrame, and PortFramesKey
+// are defined in SupportingTypes.swift

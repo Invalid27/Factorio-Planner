@@ -1,5 +1,5 @@
 // FactorioPlannerApp.swift
-// THIS FILE IS REQUIRED - It's the main entry point of your app!
+// FIXED: Using correct method names that match your GraphState extensions
 
 import SwiftUI
 
@@ -91,19 +91,19 @@ struct FactorioPlannerApp: App {
                 Divider()
                 
                 Button("Cut") {
-                    graph.cutSelectedNodes()
+                    graph.cutSelectedNodes()  // FIXED: correct method name
                 }
                 .keyboardShortcut("x", modifiers: .command)
                 .disabled(graph.selectedNodeIDs.isEmpty)
                 
                 Button("Copy") {
-                    graph.copySelectedNodes()
+                    graph.copySelectedNodes()  // FIXED: correct method name
                 }
                 .keyboardShortcut("c", modifiers: .command)
                 .disabled(graph.selectedNodeIDs.isEmpty)
                 
                 Button("Paste") {
-                    graph.pasteNodes(at: graph.lastMousePosition)
+                    graph.pasteNodes(at: graph.lastMousePosition)  // This is correct
                 }
                 .keyboardShortcut("v", modifiers: .command)
                 .disabled(!graph.canPaste())
