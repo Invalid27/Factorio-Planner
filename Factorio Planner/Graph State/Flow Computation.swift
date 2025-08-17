@@ -2,10 +2,10 @@
 import Foundation
 
 extension GraphState {
-    // MARK: - FIXED Flow Computation
+    // MARK: - Flow Computation
     
     func computeFlows() {
-        // FIXED: Ensure we're on main thread and prevent recursive calls
+        // Ensure we're on main thread and prevent recursive calls
         guard Thread.isMainThread else {
             DispatchQueue.main.async {
                 self.computeFlows()
@@ -76,7 +76,7 @@ extension GraphState {
             }
         }
         
-        // FIXED: Update nodes without triggering didSet recursively
+        // Update nodes without triggering didSet recursively
         var updatedNodes = nodes
         var anyChanges = false
         
@@ -91,7 +91,7 @@ extension GraphState {
             }
         }
         
-        // FIXED: Only update if there were actual changes
+        // Only update if there were actual changes
         if anyChanges {
             // Temporarily disable auto-save during bulk update
             let timer = saveTimer
@@ -102,5 +102,49 @@ extension GraphState {
             // Restore auto-save timer
             saveTimer = timer
         }
+    }
+    
+    // Auto-balance a production chain to eliminate bottlenecks
+    func autoBalance(startingNodeID: UUID? = nil) {
+        guard let startNode = startingNodeID ?? nodes.keys.first else { return }
+        
+        // Start from the end products and work backwards
+        var visited = Set<UUID>()
+        var queue = [startNode]
+        
+        if startingNodeID == nil {
+            // Find end nodes (nodes with no outgoing edges)
+            let endNodes = nodes.keys.filter { nodeID in
+                !edges.contains { $0.fromNode == nodeID }
+            }
+            queue = Array(endNodes)
+        }
+        
+        while !queue.isEmpty {
+            let currentID = queue.removeFirst()
+            guard !visited.contains(currentID),
+                  let node = nodes[currentID] else {
+                continue
+            }
+            
+            visited.insert(currentID)
+            
+            // Set a default target if not set
+            if node.targetPerMin == nil {
+                var updatedNode = node
+                updatedNode.targetPerMin = 60.0 // Default to 1 per second
+                nodes[currentID] = updatedNode
+            }
+            
+            // Add upstream nodes to queue
+            for edge in edges where edge.toNode == currentID {
+                if !visited.contains(edge.fromNode) {
+                    queue.append(edge.fromNode)
+                }
+            }
+        }
+        
+        // Trigger flow computation to propagate changes
+        computeFlows()
     }
 }

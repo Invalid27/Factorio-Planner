@@ -1,81 +1,115 @@
-// MARK: - Selection and Clipboard Methods (FIXED)
+// Selection and Clipboard.swift
+import Foundation
+import CoreGraphics
 
-func selectNode(_ nodeID: UUID?) {
-    if let id = nodeID {
-        selectedNodeIDs = [id]
-    } else {
-        selectedNodeIDs.removeAll()
-    }
-}
-
-func toggleNodeSelection(_ nodeID: UUID) {
-    if selectedNodeIDs.contains(nodeID) {
-        selectedNodeIDs.remove(nodeID)
-    } else {
-        selectedNodeIDs.insert(nodeID)
-    }
-}
-
-func selectNodes(in rect: CGRect) {
-    selectedNodeIDs.removeAll()
-    for (id, node) in nodes {
-        let nodeRect = CGRect(x: node.x - 100, y: node.y - 50, width: 200, height: 100)
-        if rect.intersects(nodeRect) {
-            selectedNodeIDs.insert(id)
+extension GraphState {
+    // MARK: - Selection Management
+    
+    func selectNode(_ nodeID: UUID, addToSelection: Bool = false) {
+        if addToSelection {
+            selectedNodeIDs.insert(nodeID)
+        } else {
+            selectedNodeIDs = [nodeID]
         }
     }
-}
-
-func copyNodes() {
-    clipboard = selectedNodeIDs.compactMap { nodes[$0] }
-    clipboardWasCut = false
-}
-
-func cutNodes() {
-    clipboard = selectedNodeIDs.compactMap { nodes[$0] }
-    clipboardWasCut = true
-    for id in selectedNodeIDs {
-        removeNode(id)
-    }
-    selectedNodeIDs.removeAll()
-}
-
-func pasteNodes() {
-    guard !clipboard.isEmpty else { return }
     
-    let offset = CGFloat(20)
-    var newSelectedIDs: Set<UUID> = []
-    
-    for nodeToPaste in clipboard {
-        var newNode = Node(
-            recipeID: nodeToPaste.recipeID,
-            x: lastMousePosition.x + offset,
-            y: lastMousePosition.y + offset,
-            targetPerMin: nodeToPaste.targetPerMin,
-            speedMultiplier: nodeToPaste.speedMultiplier
-        )
-        newNode.selectedMachineTierID = nodeToPaste.selectedMachineTierID
-        newNode.modules = nodeToPaste.modules
-        
-        nodes[newNode.id] = newNode
-        newSelectedIDs.insert(newNode.id)
+    func deselectNode(_ nodeID: UUID) {
+        selectedNodeIDs.remove(nodeID)
     }
     
-    selectedNodeIDs = newSelectedIDs
-    
-    DispatchQueue.main.async {
-        self.computeFlows()
+    func selectAll() {
+        selectedNodeIDs = Set(nodes.keys)
     }
     
-    if clipboardWasCut {
-        clipboard.removeAll()
+    func deselectAll() {
+        selectedNodeIDs.removeAll()
+    }
+    
+    func selectNodes(in rect: CGRect) {
+        selectedNodeIDs = Set(nodes.compactMap { (id, node) in
+            let nodeRect = CGRect(x: node.x - 50, y: node.y - 50, width: 100, height: 100)
+            return rect.intersects(nodeRect) ? id : nil
+        })
+    }
+    
+    // MARK: - Clipboard Operations
+    
+    func copySelectedNodes() {
+        clipboard = selectedNodeIDs.compactMap { nodes[$0] }
         clipboardWasCut = false
     }
-}
-
-func deleteSelectedNodes() {
-    for id in selectedNodeIDs {
-        removeNode(id)
+    
+    func cutSelectedNodes() {
+        clipboard = selectedNodeIDs.compactMap { nodes[$0] }
+        clipboardWasCut = true
+        
+        // Visual feedback: reduce opacity of cut nodes
+        // This would need to be handled in the UI layer
     }
-    selectedNodeIDs.removeAll()
+    
+    func pasteNodes(at position: CGPoint) {
+        guard !clipboard.isEmpty else { return }
+        
+        // Calculate center of clipboard nodes
+        let centerX = clipboard.map { $0.x }.reduce(0, +) / CGFloat(clipboard.count)
+        let centerY = clipboard.map { $0.y }.reduce(0, +) / CGFloat(clipboard.count)
+        
+        // Calculate offset from center to paste position
+        let offsetX = position.x - centerX
+        let offsetY = position.y - centerY
+        
+        // If this was a cut operation, remove the original nodes
+        if clipboardWasCut {
+            for node in clipboard {
+                nodes.removeValue(forKey: node.id)
+                edges.removeAll { $0.fromNode == node.id || $0.toNode == node.id }
+            }
+            clipboardWasCut = false
+        }
+        
+        // Create new nodes at paste position
+        var newNodeIDs: Set<UUID> = []
+        var oldToNewIDMap: [UUID: UUID] = [:]
+        
+        for var node in clipboard {
+            let oldID = node.id
+            node.id = UUID()
+            node.x += offsetX
+            node.y += offsetY
+            
+            nodes[node.id] = node
+            newNodeIDs.insert(node.id)
+            oldToNewIDMap[oldID] = node.id
+        }
+        
+        // Copy edges between pasted nodes
+        if !clipboardWasCut {
+            let clipboardNodeIDs = Set(clipboard.map { $0.id })
+            for edge in edges {
+                // Check if both nodes of the edge are in clipboard
+                if clipboardNodeIDs.contains(edge.fromNode) &&
+                   clipboardNodeIDs.contains(edge.toNode) {
+                    if let newFromID = oldToNewIDMap[edge.fromNode],
+                       let newToID = oldToNewIDMap[edge.toNode] {
+                        let newEdge = Edge(fromNode: newFromID, toNode: newToID, item: edge.item)
+                        edges.append(newEdge)
+                    }
+                }
+            }
+        }
+        
+        // Select the newly pasted nodes
+        selectedNodeIDs = newNodeIDs
+        
+        // Clear clipboard if it was a cut operation
+        if clipboardWasCut {
+            clipboard.removeAll()
+        }
+        
+        computeFlows()
+    }
+    
+    func canPaste() -> Bool {
+        return !clipboard.isEmpty
+    }
 }

@@ -2,7 +2,7 @@
 import Foundation
 
 extension GraphState {
-    // MARK: - FIXED Auto-Save System
+    // MARK: - Auto-Save System
     
     func scheduleAutoSave() {
         // Cancel any pending save
@@ -44,7 +44,7 @@ extension GraphState {
             self.edges = savedState.edges
             print("Loaded auto-save with \(nodes.count) nodes and \(edges.count) edges")
             
-            // FIXED: Compute flows after a brief delay to let UI settle
+            // Compute flows after a brief delay to let UI settle
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 self.computeFlows()
             }

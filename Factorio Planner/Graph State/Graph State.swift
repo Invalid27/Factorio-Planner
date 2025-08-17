@@ -1,4 +1,6 @@
-// MARK: - Fixed GraphState with corrected access levels
+// Graph State.swift
+import Foundation
+import SwiftUI
 
 final class GraphState: ObservableObject, Codable {
     enum CodingKeys: CodingKey {
@@ -10,10 +12,9 @@ final class GraphState: ObservableObject, Codable {
         case sum = "Sum"
     }
     
-    // FIXED: Proper @Published properties with didSet
+    // MARK: - Published Properties
     @Published var nodes: [UUID: Node] = [:] {
         didSet {
-            // Debounce auto-save to prevent excessive saves
             scheduleAutoSave()
         }
     }
@@ -44,19 +45,20 @@ final class GraphState: ObservableObject, Codable {
     @Published var selectionRect: CGRect? = nil
     @Published var isSelecting: Bool = false
     
-    // FIXED: Separate aggregate with its own save mechanism
+    // Aggregate mode
     @Published var aggregate: Aggregate = .max {
         didSet {
             savePreferences()
         }
     }
     
-    // FIXED: Made saveTimer internal so NodeCard can access it
-    private var isComputing = false
-    private var pendingCompute = false
-    internal var saveTimer: Timer?  // Changed from private to internal
-    private let saveQueue = DispatchQueue(label: "graphstate.save", qos: .utility)
+    // MARK: - Internal Properties
+    internal var isComputing = false
+    internal var pendingCompute = false
+    internal var saveTimer: Timer?
+    internal let saveQueue = DispatchQueue(label: "graphstate.save", qos: .utility)
     
+    // MARK: - Initialization
     init() {
         loadAutoSave()
         loadPreferences()
@@ -74,4 +76,30 @@ final class GraphState: ObservableObject, Codable {
         try container.encode(Array(nodes.values), forKey: .nodes)
         try container.encode(edges, forKey: .edges)
     }
+}
+
+// MARK: - Supporting Types
+struct DragContext {
+    var fromPort: PortKey
+    var startPoint: CGPoint
+    var currentPoint: CGPoint
+}
+
+struct PickerContext {
+    var fromPort: PortKey
+    var dropPoint: CGPoint
+}
+
+// MARK: - Preference Keys
+struct PortFramesKey: PreferenceKey {
+    static var defaultValue: [PortFrame] = []
     
+    static func reduce(value: inout [PortFrame], nextValue: () -> [PortFrame]) {
+        value.append(contentsOf: nextValue())
+    }
+}
+
+struct PortFrame: Equatable {
+    let key: PortKey
+    let frame: CGRect
+}
