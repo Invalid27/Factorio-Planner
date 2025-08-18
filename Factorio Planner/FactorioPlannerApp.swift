@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 import UniformTypeIdentifiers
 
 // MARK: - Constants
@@ -90,8 +91,29 @@ struct PortRow: View {
     var side: IOSide
     var item: String
     var amount: Double
+    var quality: Quality = .normal  // Add quality parameter
     
     @State private var centerInCanvas: CGPoint = .zero
+    
+    private var node: Node? {
+        graph.nodes[nodeID]
+    }
+    
+    private var totalQualityBonus: Double {
+        guard let node = node else { return 0 }
+        // Quality modules typically give around 10% quality chance per module
+        return node.modules.compactMap { module in
+            if module?.type == .quality {
+                switch module?.level {
+                case 1: return 0.025  // 2.5% per level 1
+                case 2: return 0.06   // 6% per level 2
+                case 3: return 0.10   // 10% per level 3
+                default: return 0.0
+                }
+            }
+            return nil
+        }.reduce(0, +)
+    }
     
     private var flowRate: Double {
         guard let node = graph.nodes[nodeID],
@@ -104,7 +126,13 @@ struct PortRow: View {
             let totalOutput = recipe.outputs.values.reduce(0, +)
             let actualOutput = totalOutput * (1 + node.totalProductivityBonus)
             let thisOutputRatio = amount / totalOutput
-            return targetPerMin * thisOutputRatio * (1 + node.totalProductivityBonus)
+            let baseFlow = targetPerMin * thisOutputRatio * (1 + node.totalProductivityBonus)
+            
+            // Adjust flow based on quality distribution
+            if recipe.category == "recycling" && totalQualityBonus > 0 {
+                return calculateQualityFlow(baseFlow: baseFlow, forQuality: quality)
+            }
+            return baseFlow
         } else {
             let outputAmount = recipe.outputs.values.first ?? 1
             let actualOutput = outputAmount * (1 + node.totalProductivityBonus)
@@ -113,120 +141,176 @@ struct PortRow: View {
         }
     }
     
+    private func calculateQualityFlow(baseFlow: Double, forQuality: Quality) -> Double {
+        guard totalQualityBonus > 0 else {
+            return forQuality == .normal ? baseFlow : 0
+        }
+        
+        // Calculate distribution based on quality bonus
+        let qualityChance = min(totalQualityBonus, 1.0)
+        
+        switch forQuality {
+        case .normal:
+            return baseFlow * (1.0 - qualityChance * 0.9)
+        case .uncommon:
+            return baseFlow * (qualityChance * 0.5)
+        case .rare:
+            return baseFlow * (qualityChance * 0.3)
+        case .epic:
+            return baseFlow * (qualityChance * 0.08)
+        case .legendary:
+            return baseFlow * (qualityChance * 0.02)
+        }
+    }
+    
     private var flowRateText: String {
         if flowRate == 0 {
-            return "×\(amount.formatted())"
+            if quality == .normal {
+                return "×\(amount.formatted())"
+            } else {
+                return ""  // Don't show anything for non-normal qualities with 0 flow
+            }
         } else if flowRate == floor(flowRate) {
             return String(format: "%.0f", flowRate)
+        } else if flowRate < 0.1 {
+            return String(format: "%.2f", flowRate)
         } else {
             return String(format: "%.1f", flowRate)
         }
     }
     
+    private var itemDisplayName: String {
+        if quality != .normal {
+            return "\(item) (\(quality.rawValue))"
+        }
+        return item
+    }
+    
     var body: some View {
-        HStack(spacing: 4) {
-            if side == .input {
-                HStack(spacing: 4) {
+        // Only show this row if there's actually flow for this quality tier
+        if flowRate > 0.001 || quality == .normal {
+            HStack(spacing: 4) {
+                if side == .input {
                     HStack(spacing: 4) {
-                        IconOrMonogram(item: item, size: 16)
-                            .hoverTooltip(item)
-                        
-                        Text(flowRateText)
-                            .foregroundStyle(flowRate > 0 ? .primary : .secondary)
-                            .font(.caption2)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .layoutPriority(1)
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .frame(minWidth: 0)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(isPortConnected(nodeID: nodeID, item: item, side: .input, edges: graph.edges)
-                                  ? Color.clear
-                                  : Color.orange.opacity(0.3))
-                            .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: .input, edges: graph.edges))
-                    )
-                    .background(
-                        GeometryReader { geometry in
-                            let frame = geometry.frame(in: .named("canvas"))
-                            Color.clear
-                                .onAppear {
-                                    centerInCanvas = CGPoint(x: frame.midX, y: frame.midY)
-                                }
-                                .onChange(of: frame) { _, newFrame in
-                                    centerInCanvas = CGPoint(x: newFrame.midX, y: newFrame.midY)
-                                }
-                                .preference(
-                                    key: PortFramesKey.self,
-                                    value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side), frame: frame)]
+                        HStack(spacing: 4) {
+                            IconOrMonogram(item: item, size: 16)
+                                .overlay(
+                                    // Quality indicator overlay
+                                    quality != .normal ?
+                                    Circle()
+                                        .fill(quality.color)
+                                        .frame(width: 6, height: 6)
+                                        .offset(x: 6, y: -2) : nil,
+                                    alignment: .topTrailing
                                 )
+                                .hoverTooltip(itemDisplayName)
+                            
+                            Text(flowRateText)
+                                .foregroundStyle(flowRate > 0 ? .primary : .secondary)
+                                .font(.caption2)
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .layoutPriority(1)
                         }
-                    )
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                handleDragChanged(value)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .frame(minWidth: 0)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isPortConnected(nodeID: nodeID, item: item, side: .output, quality: quality, edges: graph.edges)
+                                      ? Color.clear
+                                      : Color.orange.opacity(0.3))
+                                .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: .output, quality: quality, edges: graph.edges))
+                        )
+                        .background(
+                            GeometryReader { geometry in
+                                let frame = geometry.frame(in: .named("canvas"))
+                                Color.clear
+                                    .onAppear {
+                                        centerInCanvas = CGPoint(x: frame.midX, y: frame.midY)
+                                    }
+                                    .onChange(of: frame) { _, newFrame in
+                                        centerInCanvas = CGPoint(x: newFrame.midX, y: newFrame.midY)
+                                    }
+                                    .preference(
+                                        key: PortFramesKey.self,
+                                        value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side, quality: quality), frame: frame)]
+                                    )
                             }
-                            .onEnded { _ in
-                                handleDragEnd()
-                            }
-                    )
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                HStack(spacing: 4) {
+                        )
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    handleDragChanged(value)
+                                }
+                                .onEnded { _ in
+                                    handleDragEnd()
+                                }
+                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
                     HStack(spacing: 4) {
-                        Text(flowRateText)
-                            .foregroundStyle(flowRate > 0 ? .primary : .secondary)
-                            .font(.caption2)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .layoutPriority(1)
-                        
-                        IconOrMonogram(item: item, size: 16)
-                            .hoverTooltip(item)
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .frame(minWidth: 0)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(isPortConnected(nodeID: nodeID, item: item, side: .output, edges: graph.edges)
-                                  ? Color.clear
-                                  : Color.orange.opacity(0.3))
-                            .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: .output, edges: graph.edges))
-                    )
-                    .background(
-                        GeometryReader { geometry in
-                            let frame = geometry.frame(in: .named("canvas"))
-                            Color.clear
-                                .onAppear {
-                                    centerInCanvas = CGPoint(x: frame.midX, y: frame.midY)
-                                }
-                                .onChange(of: frame) { _, newFrame in
-                                    centerInCanvas = CGPoint(x: newFrame.midX, y: newFrame.midY)
-                                }
-                                .preference(
-                                    key: PortFramesKey.self,
-                                    value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side), frame: frame)]
+                        HStack(spacing: 4) {
+                            Text(flowRateText)
+                                .foregroundStyle(flowRate > 0 ? .primary : .secondary)
+                                .font(.caption2)
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .layoutPriority(1)
+                            
+                            IconOrMonogram(item: item, size: 16)
+                                .overlay(
+                                    // Quality indicator overlay
+                                    quality != .normal ?
+                                    Circle()
+                                        .fill(quality.color)
+                                        .frame(width: 6, height: 6)
+                                        .offset(x: 6, y: -2) : nil,
+                                    alignment: .topTrailing
                                 )
+                                .hoverTooltip(itemDisplayName)
                         }
-                    )
-                    .highPriorityGesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                handleDragChanged(value)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .frame(minWidth: 0)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isPortConnected(nodeID: nodeID, item: item, side: .output, edges: graph.edges)
+                                      ? Color.clear
+                                      : Color.orange.opacity(0.3))
+                                .animation(.easeInOut(duration: 0.2), value: isPortConnected(nodeID: nodeID, item: item, side: .output, edges: graph.edges))
+                        )
+                        .background(
+                            GeometryReader { geometry in
+                                let frame = geometry.frame(in: .named("canvas"))
+                                Color.clear
+                                    .onAppear {
+                                        centerInCanvas = CGPoint(x: frame.midX, y: frame.midY)
+                                    }
+                                    .onChange(of: frame) { _, newFrame in
+                                        centerInCanvas = CGPoint(x: newFrame.midX, y: newFrame.midY)
+                                    }
+                                    .preference(
+                                        key: PortFramesKey.self,
+                                        value: [PortFrame(key: PortKey(nodeID: nodeID, item: item, side: side, quality: quality), frame: frame)]
+                                    )
                             }
-                            .onEnded { _ in
-                                handleDragEnd()
-                            }
-                    )
+                        )
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    handleDragChanged(value)
+                                }
+                                .onEnded { _ in
+                                    handleDragEnd()
+                                }
+                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
-                .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
     }
@@ -240,7 +324,7 @@ struct PortRow: View {
         
         if graph.dragging == nil {
             graph.dragging = DragContext(
-                fromPort: PortKey(nodeID: nodeID, item: item, side: side),
+                fromPort: PortKey(nodeID: nodeID, item: item, side: side, quality: quality),
                 startPoint: startPoint,
                 currentPoint: currentPoint
             )
@@ -255,27 +339,42 @@ struct PortRow: View {
         let currentPoint = dragContext.currentPoint
         let oppositeSide = side.opposite
         
+        // For quality outputs connecting to inputs, we should allow connecting to normal inputs
         let hitPort = graph.portFrames.first { portKey, rect in
             portKey.item == item &&
             portKey.side == oppositeSide &&
+            (portKey.quality == quality || (side == .output && portKey.quality == .normal)) &&
             rect.insetBy(dx: -8, dy: -8).contains(currentPoint)
         }?.key
         
         if let targetPort = hitPort {
             if side == .output {
-                graph.addEdge(from: nodeID, to: targetPort.nodeID, item: item)
+                graph.addEdge(from: nodeID, to: targetPort.nodeID, item: item, quality: quality)
             } else {
-                graph.addEdge(from: targetPort.nodeID, to: nodeID, item: item)
+                graph.addEdge(from: targetPort.nodeID, to: nodeID, item: item, quality: targetPort.quality)
             }
         } else {
             graph.pickerContext = PickerContext(
-                fromPort: PortKey(nodeID: nodeID, item: item, side: side),
+                fromPort: PortKey(nodeID: nodeID, item: item, side: side, quality: quality),
                 dropPoint: currentPoint
             )
             graph.showPicker = true
         }
         
         graph.dragging = nil
+    }
+}
+
+// Quality indicator dots view
+struct QualityIndicators: View {
+    var body: some View {
+        HStack(spacing: 1) {
+            ForEach([Quality.uncommon, .rare, .epic, .legendary], id: \.self) { quality in
+                Circle()
+                    .fill(quality.color)
+                    .frame(width: 3, height: 3)
+            }
+        }
     }
 }
 
@@ -391,111 +490,249 @@ struct WiresLayer: View {
     var portFrames: [PortKey: CGRect]
     
     var body: some View {
-        ZStack {
-            Canvas { context, size in
-                for edge in graph.edges {
-                    let outputPortKey = PortKey(nodeID: edge.fromNode, item: edge.item, side: .output)
-                    let inputPortKey = PortKey(nodeID: edge.toNode, item: edge.item, side: .input)
-                    
-                    guard let fromRect = portFrames[outputPortKey],
-                          let toRect = portFrames[inputPortKey] else {
-                        continue
-                    }
-                    
-                    let startPoint = CGPoint(x: fromRect.midX, y: fromRect.midY)
-                    let endPoint = CGPoint(x: toRect.midX, y: toRect.midY)
-                    let path = createCubicPath(from: startPoint, to: endPoint)
-                    
-                    context.stroke(
-                        path,
-                        with: .color(.orange.opacity(0.9)),
-                        lineWidth: Constants.wireLineWidth
-                    )
-                }
-            }
-            .allowsHitTesting(false)
-            
-            ForEach(graph.edges, id: \.id) { edge in
-                WireFlowLabel(edge: edge, portFrames: portFrames)
-            }
-        }
+        // This is now just a placeholder - actual rendering happens in WireRendererNSView
+        EmptyView()
     }
 }
 
-struct WireFlowLabel: View {
+// MARK: - High Performance Wire Renderer (NSView)
+class WireRendererNSView: NSView {
+    weak var graphState: GraphState?
+    private var cancellables = Set<AnyCancellable>()
+    
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupView()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupView()
+    }
+    
+    private func setupView() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+    
+    func setGraphState(_ state: GraphState) {
+        self.graphState = state
+        
+        // Subscribe to changes
+        cancellables.removeAll()
+        
+        state.$edges
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.needsDisplay = true
+            }
+            .store(in: &cancellables)
+        
+        state.$portFrames
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.needsDisplay = true
+            }
+            .store(in: &cancellables)
+        
+        state.$dragging
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.needsDisplay = true
+            }
+            .store(in: &cancellables)
+        
+        state.$nodes
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.needsDisplay = true
+            }
+            .store(in: &cancellables)
+    }
+    
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        
+        guard let context = NSGraphicsContext.current?.cgContext,
+              let graphState = graphState else { return }
+        
+        // Draw background
+        drawBackground(context: context, rect: dirtyRect)
+        
+        // Draw grid dots
+        drawGrid(context: context, rect: dirtyRect)
+        
+        // Draw wires BEFORE the temporary drag wire
+        drawWires(context: context, graphState: graphState, viewHeight: bounds.height)
+        
+        // Draw temporary drag wire on top
+        if let dragging = graphState.dragging {
+            // Convert coordinates from SwiftUI to NSView
+            let fromPoint = CGPoint(x: dragging.startPoint.x,
+                                   y: bounds.height - dragging.startPoint.y)
+            let toPoint = CGPoint(x: dragging.currentPoint.x,
+                                y: bounds.height - dragging.currentPoint.y)
+            drawTempWire(context: context, from: fromPoint, to: toPoint)
+        }
+    }
+    
+    private func drawBackground(context: CGContext, rect: CGRect) {
+        // Solid dark background
+        context.setFillColor(NSColor(white: 0.11, alpha: 1.0).cgColor)
+        context.fill(rect)
+    }
+    
+    private func drawGrid(context: CGContext, rect: CGRect) {
+        context.setFillColor(NSColor.white.withAlphaComponent(0.05).cgColor)
+        let dotSize: CGFloat = Constants.dotSize
+        let spacing: CGFloat = Constants.gridSpacing
+        
+        for x in stride(from: 25, through: rect.width, by: spacing) {
+            for y in stride(from: 25, through: rect.height, by: spacing) {
+                context.fillEllipse(in: CGRect(x: x - dotSize/2, y: y - dotSize/2,
+                                              width: dotSize, height: dotSize))
+            }
+        }
+    }
+    
+    private func drawWires(context: CGContext, graphState: GraphState, viewHeight: CGFloat) {
+        context.setLineWidth(Constants.wireLineWidth)
+        context.setStrokeColor(NSColor.orange.withAlphaComponent(0.9).cgColor)
+        
+        // First pass: Draw all wires
+        for edge in graphState.edges {
+            let outputPortKey = PortKey(nodeID: edge.fromNode, item: edge.item, side: .output, quality: edge.quality)
+            let inputPortKey = PortKey(nodeID: edge.toNode, item: edge.item, side: .input, quality: .normal)
+            
+            guard let fromRect = graphState.portFrames[outputPortKey],
+                  let toRect = graphState.portFrames[inputPortKey] else {
+                continue
+            }
+            
+            // Convert from SwiftUI coordinates (top-left origin) to NSView coordinates (bottom-left origin)
+            let startPoint = CGPoint(x: fromRect.midX, y: viewHeight - fromRect.midY)
+            let endPoint = CGPoint(x: toRect.midX, y: viewHeight - toRect.midY)
+            
+            drawCubicCurve(context: context, from: startPoint, to: endPoint)
+        }
+        
+        // Second pass: Draw all labels on top of wires
+        for edge in graphState.edges {
+            let outputPortKey = PortKey(nodeID: edge.fromNode, item: edge.item, side: .output, quality: edge.quality)
+            let inputPortKey = PortKey(nodeID: edge.toNode, item: edge.item, side: .input, quality: .normal)
+            
+            guard let fromRect = graphState.portFrames[outputPortKey],
+                  let toRect = graphState.portFrames[inputPortKey] else {
+                continue
+            }
+            
+            // Convert from SwiftUI coordinates (top-left origin) to NSView coordinates (bottom-left origin)
+            let startPoint = CGPoint(x: fromRect.midX, y: viewHeight - fromRect.midY)
+            let endPoint = CGPoint(x: toRect.midX, y: viewHeight - toRect.midY)
+            
+            // Draw flow rate label at midpoint
+            let midPoint = CGPoint(x: (startPoint.x + endPoint.x) / 2,
+                                  y: (startPoint.y + endPoint.y) / 2)
+            drawFlowLabel(context: context, at: midPoint, edge: edge, graphState: graphState)
+        }
+    }
+    
+    private func drawCubicCurve(context: CGContext, from: CGPoint, to: CGPoint) {
+        let path = CGMutablePath()
+        path.move(to: from)
+        
+        let deltaX = max(abs(to.x - from.x) * 0.5, Constants.curveTension)
+        let control1 = CGPoint(x: from.x + deltaX, y: from.y)
+        let control2 = CGPoint(x: to.x - deltaX, y: to.y)
+        
+        path.addCurve(to: to, control1: control1, control2: control2)
+        context.addPath(path)
+        context.strokePath()
+    }
+    
+    private func drawTempWire(context: CGContext, from: CGPoint, to: CGPoint) {
+        context.saveGState()
+        context.setLineWidth(Constants.wireLineWidth)
+        context.setStrokeColor(NSColor.blue.withAlphaComponent(0.8).cgColor)
+        context.setLineDash(phase: 0, lengths: [6, 6])
+        
+        drawCubicCurve(context: context, from: from, to: to)
+        context.restoreGState()
+    }
+    
+    private func drawFlowLabel(context: CGContext, at point: CGPoint, edge: Edge, graphState: GraphState) {
+            guard let consumerNode = graphState.nodes[edge.toNode],
+                  let consumerRecipe = RECIPES.first(where: { $0.id == consumerNode.recipeID }),
+                  let targetPerMin = consumerNode.targetPerMin,
+                  targetPerMin > 0 else { return }
+            
+            let outputAmount = consumerRecipe.outputs.values.first ?? 1
+            let actualOutput = outputAmount * (1 + consumerNode.totalProductivityBonus)
+            let craftsPerMin = targetPerMin / actualOutput
+            let inputAmount = consumerRecipe.inputs[edge.item] ?? 0
+            let flowRate = craftsPerMin * inputAmount
+            
+            let flowText = flowRate == floor(flowRate) ?
+                String(format: "%.0f", flowRate) :
+                String(format: "%.1f", flowRate)
+            
+            // Calculate text size
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.boldSystemFont(ofSize: 12)
+            ]
+            let textSize = flowText.size(withAttributes: attrs)
+            let padding: CGFloat = 4
+            let boxRect = CGRect(x: point.x - textSize.width/2 - padding,
+                                 y: point.y - textSize.height/2 - padding/2,
+                                 width: textSize.width + padding * 2,
+                                 height: textSize.height + padding)
+            
+            // Draw background
+            let roundedPath = CGPath(roundedRect: boxRect, cornerWidth: 4, cornerHeight: 4, transform: nil)
+            context.setFillColor(NSColor.orange.withAlphaComponent(0.9).cgColor)
+            context.addPath(roundedPath)
+            context.fillPath()
+            
+            // Draw border
+            context.setStrokeColor(NSColor.orange.withAlphaComponent(0.6).cgColor)
+            context.setLineWidth(1)
+            context.addPath(roundedPath)
+            context.strokePath()
+            
+            // Draw text WITHOUT flipping - use NSString drawing instead
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+            
+            let textAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.boldSystemFont(ofSize: 12),
+                .foregroundColor: NSColor.black
+            ]
+            
+            // Draw at the center of the box
+            let textRect = CGRect(x: point.x - textSize.width/2,
+                                  y: point.y - textSize.height/2,
+                                  width: textSize.width,
+                                  height: textSize.height)
+            
+            flowText.draw(in: textRect, withAttributes: textAttrs)
+            
+            NSGraphicsContext.restoreGraphicsState()
+        }
+}
+
+// MARK: - SwiftUI Wrapper for Wire Renderer
+struct WireRenderer: NSViewRepresentable {
     @EnvironmentObject var graph: GraphState
-    var edge: Edge
-    var portFrames: [PortKey: CGRect]
     
-    var body: some View {
-        let outputPortKey = PortKey(nodeID: edge.fromNode, item: edge.item, side: .output)
-        let inputPortKey = PortKey(nodeID: edge.toNode, item: edge.item, side: .input)
-        
-        guard let fromRect = portFrames[outputPortKey],
-              let toRect = portFrames[inputPortKey],
-              let consumerNode = graph.nodes[edge.toNode],
-              let consumerRecipe = RECIPES.first(where: { $0.id == consumerNode.recipeID }),
-              let targetPerMin = consumerNode.targetPerMin,
-              targetPerMin > 0 else {
-            return AnyView(EmptyView())
-        }
-        
-        let outputAmount = consumerRecipe.outputs.values.first ?? 1
-        let actualOutput = outputAmount * (1 + consumerNode.totalProductivityBonus)
-        let craftsPerMin = targetPerMin / actualOutput
-        let inputAmount = consumerRecipe.inputs[edge.item] ?? 0
-        let flowRate = craftsPerMin * inputAmount
-        
-        let startPoint = CGPoint(x: fromRect.midX, y: fromRect.midY)
-        let endPoint = CGPoint(x: toRect.midX, y: toRect.midY)
-        let midPoint = CGPoint(
-            x: (startPoint.x + endPoint.x) / 2,
-            y: (startPoint.y + endPoint.y) / 2
-        )
-        
-        let flowText: String
-        if flowRate == floor(flowRate) {
-            flowText = String(format: "%.0f", flowRate)
-        } else {
-            flowText = String(format: "%.1f", flowRate)
-        }
-        
-        return AnyView(
-            Text(flowText)
-                .font(.body)
-                .fontWeight(.bold)
-                .foregroundStyle(.black)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(.orange.opacity(0.9))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(.orange.opacity(0.6))
-                )
-                .position(midPoint)
-                .allowsHitTesting(false)
-        )
+    func makeNSView(context: Context) -> WireRendererNSView {
+        let view = WireRendererNSView()
+        view.setGraphState(graph)
+        return view
     }
-}
-
-struct WireTempPath: View {
-    var from: CGPoint
-    var to: CGPoint
     
-    var body: some View {
-        Canvas { context, size in
-            let path = createCubicPath(from: from, to: to)
-            let dashedPath = path.strokedPath(.init(lineWidth: Constants.wireLineWidth, dash: [6, 6]))
-            
-            context.stroke(
-                dashedPath,
-                with: .color(.blue.opacity(0.8))
-            )
-        }
-        .allowsHitTesting(false)
+    func updateNSView(_ nsView: WireRendererNSView, context: Context) {
+        // Force redraw when port frames change
+        nsView.needsDisplay = true
     }
 }
 
@@ -867,9 +1104,14 @@ struct RecipePicker: View {
         
         switch context.fromPort.side {
         case .output:
-            graph.addEdge(from: context.fromPort.nodeID, to: newNode.id, item: context.fromPort.item)
+            graph.addEdge(from: context.fromPort.nodeID, to: newNode.id, item: context.fromPort.item, quality: context.fromPort.quality)
         case .input:
-            graph.addEdge(from: newNode.id, to: context.fromPort.nodeID, item: context.fromPort.item)
+            graph.addEdge(from: newNode.id, to: context.fromPort.nodeID, item: context.fromPort.item, quality: context.fromPort.quality)
+        }
+        
+        // Trigger flow computation after adding the edge
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            graph.triggerFlowComputation()
         }
     }
 }
@@ -1340,7 +1582,7 @@ struct Recipe: Identifiable, Codable, Hashable {
 }
 
 // MARK: - Recipes Data (complete list with alternatives)
-let RECIPES: [Recipe] = [
+let BASE_RECIPES: [Recipe] = [
     // Basic Resources
     Recipe(id: "iron-plate", name: "Iron Plate", category: "smelting", time: 3.2, inputs: ["Iron Ore": 1], outputs: ["Iron Plate": 1]),
     Recipe(id: "copper-plate", name: "Copper Plate", category: "smelting", time: 3.2, inputs: ["Copper Ore": 1], outputs: ["Copper Plate": 1]),
@@ -1567,8 +1809,131 @@ let RECIPES: [Recipe] = [
     Recipe(id: "radar", name: "Radar", category: "assembling", time: 0.5, inputs: ["Electronic Circuit": 5, "Iron Gear Wheel": 5, "Iron Plate": 10], outputs: ["Radar": 1]),
 ]
 
-// MARK: - Icon Assets (complete list)
-let ICON_ASSETS: [String: String] = [
+// MARK: - Dynamic Recycling Recipe Generator
+func generateRecyclingRecipes() -> [Recipe] {
+    var recyclingRecipes: [Recipe] = []
+    
+    // Only exclude fluids and very special items
+    let nonRecyclables: Set<String> = [
+        // Fluids (cannot be recycled - no fluid inputs/outputs in recyclers)
+        "Water", "Steam", "Crude Oil", "Heavy Oil", "Light Oil", "Petroleum Gas",
+        "Sulfuric Acid", "Lubricant", "Molten Iron", "Molten Copper",
+        "Holmium Solution", "Lava", "Ammonia", "Nitrogen", "Hydrogen", "Oxygen",
+        "Deuterium", "Tritium", "Fluorine", "Air", "Thruster Fuel", "Thruster Oxidizer",
+        "Fluoroketone (Cold)", "Fluoroketone (Hot)",
+        
+        // Waste products that are already recycling outputs
+        "Spoilage", "Scrap",
+        
+        // Special nuclear waste
+        "Used Up Uranium Fuel Cell"
+    ]
+    
+    // Create a map of items to their simplest recipe
+    var itemToRecipe: [String: Recipe] = [:]
+    
+    for recipe in BASE_RECIPES {
+        // Skip recycling and some special processing recipes
+        if recipe.category == "recycling" ||
+           recipe.id.contains("recycling") {
+            continue
+        }
+        
+        for (outputItem, _) in recipe.outputs {
+            // Only use this recipe if we don't have one yet, or if this is a non-alt recipe
+            if itemToRecipe[outputItem] == nil {
+                itemToRecipe[outputItem] = recipe
+            } else if !ALTERNATIVE_RECIPE_IDS.contains(recipe.id) &&
+                      ALTERNATIVE_RECIPE_IDS.contains(itemToRecipe[outputItem]!.id) {
+                // Prefer non-alt recipes
+                itemToRecipe[outputItem] = recipe
+            }
+        }
+    }
+    
+    // Generate recycling recipes for items WITH crafting recipes
+    for (item, recipe) in itemToRecipe {
+        if nonRecyclables.contains(item) {
+            continue
+        }
+        
+        var recycleOutputs: [String: Double] = [:]
+        let outputAmount = recipe.outputs[item] ?? 1
+        
+        for (inputItem, inputAmount) in recipe.inputs {
+            // Skip fluid outputs
+            if nonRecyclables.contains(inputItem) {
+                continue
+            }
+            
+            // Calculate 25% return rate
+            let recycleAmount = (inputAmount / outputAmount) * 0.25
+            recycleOutputs[inputItem] = recycleAmount
+        }
+        
+        if !recycleOutputs.isEmpty {
+            let recycleId = "recycle-" + item.lowercased()
+                .replacingOccurrences(of: " ", with: "-")
+                .replacingOccurrences(of: "'", with: "")
+                .replacingOccurrences(of: ".", with: "")
+            
+            recyclingRecipes.append(Recipe(
+                id: recycleId,
+                name: "Recycle \(item)",
+                category: "recycling",
+                time: 0.3,
+                inputs: [item: 1],
+                outputs: recycleOutputs
+            ))
+        }
+    }
+    
+    // Add recycling recipes for RAW RESOURCES and items without recipes
+    // These just return themselves at 25% rate (for quality rerolling)
+    let rawResources = [
+        "Iron Ore", "Copper Ore", "Stone", "Coal", "Uranium Ore",
+        "Wood", "Raw Fish", "Ice", "Sulfur",
+        "Tungsten Ore", "Holmium Ore", "Calcite", "Lithium Ore",
+        "Yumako", "Jellynut", "Tree Seed", "Yumako Seed", "Jellynut Seed",
+        "Biter Egg", "Pentapod Egg", "Bacteria", "Iron Bacteria", "Copper Bacteria",
+        "Metallic Asteroid", "Carbonic Asteroid", "Oxide Asteroid", "Promethium Asteroid",
+        "Asteroid Chunk", "Promethium Asteroid Chunk",
+        // Basic processed materials that might not have recipes above
+        "Iron Plate", "Copper Plate", "Steel Plate", "Stone Brick",
+        "Copper Cable", "Iron Stick", "Iron Gear Wheel",
+        "Electronic Circuit", "Advanced Circuit", "Processing Unit"
+    ]
+    
+    for item in rawResources {
+        // Check if we already have a recycling recipe for this item
+        let recycleId = "recycle-" + item.lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: "'", with: "")
+        
+        let alreadyExists = recyclingRecipes.contains { $0.id == recycleId }
+        
+        if !alreadyExists && !nonRecyclables.contains(item) {
+            // For raw resources and basic items, recycling just gives 25% back
+            // This is used for quality rerolling with quality modules
+            recyclingRecipes.append(Recipe(
+                id: recycleId,
+                name: "Recycle \(item)",
+                category: "recycling",
+                time: 0.3,
+                inputs: [item: 1],
+                outputs: [item: 0.25]  // 25% chance to get the item back
+            ))
+        }
+    }
+    
+    return recyclingRecipes
+    }
+
+// For now, just use BASE_RECIPES directly
+let RECIPES: [Recipe] = BASE_RECIPES + generateRecyclingRecipes()
+
+    // MARK: - Icon Assets (complete list)
+    let ICON_ASSETS: [String: String] = [
     // Basic Resources
     "Iron Plate": "iron_plate",
     "Copper Plate": "copper_plate",
@@ -2012,6 +2377,7 @@ struct Edge: Identifiable, Codable, Hashable {
     var fromNode: UUID
     var toNode: UUID
     var item: String
+    var quality: Quality = .normal  // Add quality to track what quality is being transferred
 }
 
 // MARK: - Port Key
@@ -2019,6 +2385,7 @@ struct PortKey: Hashable, Codable {
     var nodeID: UUID
     var item: String
     var side: IOSide
+    var quality: Quality = .normal
 }
 
 enum IOSide: String, Codable, CaseIterable {
@@ -2144,11 +2511,11 @@ func machineCount(for node: Node) -> Double {
     return machines
 }
 
-func isPortConnected(nodeID: UUID, item: String, side: IOSide, edges: [Edge]) -> Bool {
+func isPortConnected(nodeID: UUID, item: String, side: IOSide, quality: Quality = .normal, edges: [Edge]) -> Bool {
     return edges.contains { edge in
         switch side {
         case .output:
-            return edge.fromNode == nodeID && edge.item == item
+            return edge.fromNode == nodeID && edge.item == item && edge.quality == quality
         case .input:
             return edge.toNode == nodeID && edge.item == item
         }
@@ -2158,6 +2525,42 @@ func isPortConnected(nodeID: UUID, item: String, side: IOSide, edges: [Edge]) ->
 func isAlternativeRecipe(_ recipe: Recipe) -> Bool {
     return ALTERNATIVE_RECIPE_IDS.contains(recipe.id)
 }
+
+// MARK: - Quality Distribution Calculator
+func calculateQualityDistribution(baseAmount: Double, qualityBonus: Double) -> [Quality: Double] {
+    guard qualityBonus > 0 else {
+        return [.normal: baseAmount]
+    }
+    
+    // Simplified quality chances based on total quality bonus
+    // These are approximations - actual Factorio uses complex formulas
+    let qualityChance = min(qualityBonus, 1.0) // Cap at 100%
+    
+    var distribution: [Quality: Double] = [:]
+    
+    // With quality modules, you get a chance for higher tiers
+    // This is simplified - real Factorio has more complex calculations
+    if qualityChance > 0 {
+        distribution[.normal] = baseAmount * (1.0 - qualityChance * 0.9)
+        distribution[.uncommon] = baseAmount * (qualityChance * 0.5)
+        distribution[.rare] = baseAmount * (qualityChance * 0.3)
+        distribution[.epic] = baseAmount * (qualityChance * 0.08)
+        distribution[.legendary] = baseAmount * (qualityChance * 0.02)
+    } else {
+        distribution[.normal] = baseAmount
+    }
+    
+    return distribution
+}
+
+// MARK: - Quality Icon Assets
+let QUALITY_ICON_ASSETS: [Quality: String] = [
+    .normal: "",  // No icon for normal
+    .uncommon: "quality_uncommon",
+    .rare: "quality_rare",
+    .epic: "quality_epic",
+    .legendary: "quality_legendary"
+]
 
 // MARK: - Graph State
 final class GraphState: ObservableObject, Codable {
@@ -2197,6 +2600,7 @@ final class GraphState: ObservableObject, Codable {
     @Published var selectedNodeID: UUID? = nil
     @Published var clipboard: Node? = nil
     @Published var clipboardWasCut: Bool = false
+    @Published var copiedModule: Module? = nil  // NEW: For module copy/paste
     
     private var isComputing = false
     private var pendingCompute = false
@@ -2373,7 +2777,10 @@ final class GraphState: ObservableObject, Codable {
         
         nodes[node.id] = node
         selectedNodeID = node.id  // Auto-select newly added node
-        computeFlows()
+        
+        // Don't immediately compute flows - let the user set targets first
+        // computeFlows()
+        
         return node
     }
     
@@ -2391,15 +2798,15 @@ final class GraphState: ObservableObject, Codable {
         computeFlows()
     }
     
-    func addEdge(from: UUID, to: UUID, item: String) {
+    func addEdge(from: UUID, to: UUID, item: String, quality: Quality = .normal) {
         guard from != to else { return }
         
         let edgeExists = edges.contains { edge in
-            edge.fromNode == from && edge.toNode == to && edge.item == item
+            edge.fromNode == from && edge.toNode == to && edge.item == item && edge.quality == quality
         }
         
         if !edgeExists {
-            edges.append(Edge(fromNode: from, toNode: to, item: item))
+            edges.append(Edge(fromNode: from, toNode: to, item: item, quality: quality))
             computeFlows()
         }
     }
@@ -2472,9 +2879,12 @@ final class GraphState: ObservableObject, Codable {
             
             for (supplierID, need) in needBySupplier {
                 let currentTarget = newTargets[supplierID] ?? 0
-                if abs(currentTarget - need) > Constants.computationTolerance {
-                    newTargets[supplierID] = need
-                    hasChanges = true
+                // Only update if the supplier doesn't have a manually set target
+                if let supplierNode = nodes[supplierID], supplierNode.targetPerMin == nil || supplierNode.targetPerMin == 0 {
+                    if abs(currentTarget - need) > Constants.computationTolerance {
+                        newTargets[supplierID] = need
+                        hasChanges = true
+                    }
                 }
             }
         }
@@ -2482,11 +2892,18 @@ final class GraphState: ObservableObject, Codable {
         for (id, targetValue) in newTargets {
             guard var node = nodes[id] else { continue }
             let roundedTarget = abs(targetValue - round(targetValue)) < 0.01 ? round(targetValue) : round(targetValue * 10) / 10
-            if abs((node.targetPerMin ?? 0) - roundedTarget) > Constants.computationTolerance {
-                node.targetPerMin = roundedTarget
-                nodes[id] = node
+            // Only update if the node doesn't have a manually set target or if it's currently 0
+            if node.targetPerMin == nil || node.targetPerMin == 0 {
+                if abs((node.targetPerMin ?? 0) - roundedTarget) > Constants.computationTolerance {
+                    node.targetPerMin = roundedTarget
+                    nodes[id] = node
+                }
             }
         }
+    }
+    
+    func triggerFlowComputation() {
+        computeFlows()
     }
     
     // MARK: - Import/Export
@@ -2781,14 +3198,14 @@ struct TopButtonStyle: ButtonStyle {
     }
 }
 
-// MARK: - Canvas View
+// MARK: - Canvas View (Hybrid Approach)
 struct CanvasView: View {
     @EnvironmentObject var graph: GraphState
     
     var body: some View {
         GeometryReader { _ in
             ZStack {
-                // Combined mouse tracking and right-click handling
+                // Mouse tracking (keep existing)
                 AdvancedMouseTrackingView(
                     onMouseMove: { position in
                         graph.lastMousePosition = position
@@ -2803,25 +3220,28 @@ struct CanvasView: View {
                     }
                 )
                 
-                GridBackground()
+                // High-performance wire renderer (NSView) - BEHIND nodes
+                WireRenderer()
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
                 
-                WiresLayer(portFrames: graph.portFrames)
-                    .allowsHitTesting(false)
-                
-                if let dragContext = graph.dragging {
-                    WireTempPath(from: dragContext.startPoint, to: dragContext.currentPoint)
-                }
-                
+                // Keep all your existing SwiftUI node cards ON TOP
                 ForEach(Array(graph.nodes.values), id: \.id) { node in
                     NodeCard(node: node)
                         .position(x: node.x, y: node.y)
                 }
             }
             .coordinateSpace(name: "canvas")
-            .background(DragReceiver())
+            .background(Color.clear) // Let NSView handle the background
             .onDrop(of: [UTType.text], isTargeted: .constant(false)) { _, _ in false }
+        }
+        // Make sure port frames update
+        .onPreferenceChange(PortFramesKey.self) { frames in
+            var frameDict: [PortKey: CGRect] = [:]
+            for portFrame in frames {
+                frameDict[portFrame.key] = portFrame.frame
+            }
+            graph.portFrames = frameDict
         }
     }
 }
@@ -2945,8 +3365,16 @@ struct NodeCard: View {
         graph.selectedNodeID == node.id
     }
     
+    private var recipe: Recipe? {
+        RECIPES.first(where: { $0.id == node.recipeID })
+    }
+    
+    private var hasQualityModules: Bool {
+        node.modules.contains { $0?.type == .quality }
+    }
+    
     var body: some View {
-        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+        guard let recipe = recipe else {
             return AnyView(EmptyView())
         }
         
@@ -2960,140 +3388,34 @@ struct NodeCard: View {
         )
         
         let primaryItem = recipe.outputs.keys.first ?? recipe.inputs.keys.first ?? recipe.name
+        let selectedTier = getSelectedMachineTier(for: node)
         
         return AnyView(
             VStack(alignment: .leading, spacing: 2) {
                 // Header
-                HStack(spacing: 6) {
-                    ItemBadge(item: primaryItem)
-                        .hoverTooltip(recipe.name)
-                    
-                    Text(primaryItem)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .lineLimit(1)
-                    
-                    Spacer(minLength: 0)
-                    
-                    Button(action: {
-                        graph.removeNode(node.id)
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .imageScale(.small)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
+                headerSection(primaryItem: primaryItem, selectedTier: selectedTier)
                 
                 // Controls
-                HStack {
-                    HStack(spacing: 4) {
-                        TextField("Rate", text: Binding(
-                            get: { rateText },
-                            set: { text in
-                                rateText = text
-                                let trimmed = text.trimmingCharacters(in: .whitespaces)
-                                
-                                if trimmed.isEmpty {
-                                    graph.setTarget(for: node.id, to: nil)
-                                } else if let value = Double(trimmed) {
-                                    graph.setTarget(for: node.id, to: max(0, value))
-                                }
-                            }
-                        ))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 50)
-                        .focused($rateFocused)
-                        
-                        Text("/min")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                    }
-                    
-                    Spacer()
-                    
-                    HStack(spacing: 4) {
-                        TextField("Speed", value: speedBinding, format: .number.precision(.fractionLength(0...2)))
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 50)
-                        
-                        Text("×")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                    }
-                }
+                controlsSection(speedBinding: speedBinding)
                 
                 Divider()
                 
                 // I/O Ports with machine icon in middle
-                HStack(alignment: .center, spacing: 4) {
-                    // Inputs
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("In")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        
-                        ForEach(recipe.inputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
-                            PortRow(nodeID: node.id, side: .input, item: item, amount: amount)
-                                .font(.caption2)
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    // Machine icon in center with modules
-                    VStack(spacing: 2) {
-                        MachineIcon(node: node)
-                        
-                        Text(formatMachineCount(machineCount(for: node)))
-                            .font(.body)
-                            .fontWeight(.bold)
-                            .foregroundStyle(.primary)
-                            .monospacedDigit()
-                        
-                        // Module slots
-                        if let selectedTier = getSelectedMachineTier(for: node), selectedTier.moduleSlots > 0 {
-                            ModuleSlotsView(node: node, slotCount: selectedTier.moduleSlots)
-                        }
-                        
-                        // Module stats if any modules installed
-                        if !node.modules.compactMap({ $0 }).isEmpty {
-                            ModuleStatsView(node: node)
-                        }
-                    }
-                    .padding(.top, 16)
-                    .frame(maxWidth: 60)
-                    
-                    Spacer()
-                    
-                    // Outputs
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Out")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        
-                        ForEach(recipe.outputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
-                            PortRow(nodeID: node.id, side: .output, item: item, amount: amount)
-                                .font(.caption2)
-                        }
-                    }
-                }
+                portsSection(recipe: recipe, selectedTier: selectedTier)
             }
             .padding(4)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.black.opacity(isSelected ? 0.25 : 0.20))  // Slightly lighter when selected
+                    .fill(Color.black.opacity(isSelected ? 0.25 : 0.20))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(isSelected ? Color.orange.opacity(0.4) : Color.white.opacity(0.05), lineWidth: isSelected ? 1.5 : 1)
             )
             .opacity(isSelected ? 1.0 : 0.9)
-            .shadow(color: isSelected ? Color.orange.opacity(0.15) : Color.clear, radius: 4)  // Subtle glow
+            .shadow(color: isSelected ? Color.orange.opacity(0.15) : Color.clear, radius: 4)
             .frame(minWidth: Constants.nodeMinWidth, maxWidth: Constants.nodeMaxWidth, alignment: .leading)
-            .offset(dragOffset)  // Apply visual offset for smooth dragging
+            .offset(dragOffset)
             .scaleEffect(isDragging ? 1.02 : 1.0)
             .animation(.easeOut(duration: 0.1), value: isDragging)
             .animation(.easeOut(duration: 0.15), value: isSelected)
@@ -3105,28 +3427,23 @@ struct NodeCard: View {
                     .onChanged { value in
                         if !isDragging {
                             isDragging = true
-                            graph.selectNode(node.id)  // Select on drag start
+                            graph.selectNode(node.id)
                         }
-                        // Only update visual position during drag (smooth, immediate feedback)
                         dragOffset = value.translation
                     }
                     .onEnded { value in
                         isDragging = false
                         
-                        // Update the actual node position in state when drag ends
                         guard var updatedNode = graph.nodes[node.id] else { return }
                         updatedNode.x = node.x + value.translation.width
                         updatedNode.y = node.y + value.translation.height
                         
-                        // Update state without animation to prevent bounce
                         withAnimation(nil) {
                             graph.nodes[node.id] = updatedNode
                         }
                         
-                        // Reset visual offset since position is now in state
                         dragOffset = .zero
                         
-                        // Compute flows after drag is complete
                         graph.computeFlows()
                     }
             )
@@ -3139,6 +3456,141 @@ struct NodeCard: View {
                 }
             }
         )
+    }
+    
+    @ViewBuilder
+    private func headerSection(primaryItem: String, selectedTier: MachineTier?) -> some View {
+        HStack(spacing: 6) {
+            ItemBadge(item: primaryItem)
+                .hoverTooltip(recipe?.name ?? "")
+            
+            Text(primaryItem)
+                .font(.caption)
+                .fontWeight(.medium)
+                .lineLimit(1)
+            
+            Spacer(minLength: 0)
+            
+            Button(action: {
+                graph.removeNode(node.id)
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+    
+    @ViewBuilder
+    private func controlsSection(speedBinding: Binding<Double>) -> some View {
+        HStack {
+            HStack(spacing: 4) {
+                TextField("Rate", text: Binding(
+                    get: { rateText },
+                    set: { text in
+                        rateText = text
+                        let trimmed = text.trimmingCharacters(in: .whitespaces)
+                        
+                        if trimmed.isEmpty {
+                            graph.setTarget(for: node.id, to: nil)
+                        } else if let value = Double(trimmed) {
+                            graph.setTarget(for: node.id, to: max(0, value))
+                        }
+                    }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 50)
+                .focused($rateFocused)
+                
+                Text("/min")
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+            }
+            
+            Spacer()
+            
+            HStack(spacing: 4) {
+                TextField("Speed", value: speedBinding, format: .number.precision(.fractionLength(0...2)))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 50)
+                
+                Text("×")
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func portsSection(recipe: Recipe, selectedTier: MachineTier?) -> some View {
+        HStack(alignment: .center, spacing: 4) {
+            // Inputs
+            VStack(alignment: .leading, spacing: 2) {
+                Text("In")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                
+                ForEach(recipe.inputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+                    PortRow(nodeID: node.id, side: .input, item: item, amount: amount)
+                        .font(.caption2)
+                }
+            }
+            
+            Spacer()
+            
+            // Machine icon in center with modules
+            VStack(spacing: 2) {
+                MachineIcon(node: node)
+                
+                Text(formatMachineCount(machineCount(for: node)))
+                    .font(.body)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+                
+                if let tier = selectedTier, tier.moduleSlots > 0 {
+                    ModuleSlotsView(node: node, slotCount: tier.moduleSlots)
+                }
+                
+                if !node.modules.compactMap({ $0 }).isEmpty {
+                    ModuleStatsView(node: node)
+                }
+            }
+            .padding(.top, 16)
+            .frame(maxWidth: 60)
+            
+            Spacer()
+            
+            // Outputs
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Out")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                
+                // Create output views
+                outputViews(recipe: recipe)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func outputViews(recipe: Recipe) -> some View {
+        ForEach(recipe.outputs.sorted(by: { $0.key < $1.key }), id: \.key) { item, amount in
+            if recipe.category == "recycling" && hasQualityModules {
+                // Show each quality tier as a separate row
+                ForEach(Quality.allCases, id: \.self) { quality in
+                    PortRow(nodeID: node.id, side: .output, item: item, amount: amount, quality: quality)
+                        .font(.caption2)
+                }
+            } else {
+                // Normal output
+                PortRow(nodeID: node.id, side: .output, item: item, amount: amount, quality: .normal)
+                    .font(.caption2)
+            }
+        }
     }
     
     private func updateRateText() {
@@ -3267,6 +3719,172 @@ struct MachineIcon: View {
 }
 
 // MARK: - Module UI Components
+
+struct ModuleSlot: View {
+    @EnvironmentObject var graph: GraphState
+    var node: Node
+    var slotIndex: Int
+    @State private var showModulePicker = false
+    
+    private var currentModule: Module? {
+        if slotIndex < node.modules.count {
+            return node.modules[slotIndex]
+        }
+        return nil
+    }
+    
+    private var hasRestrictions: Bool {
+        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return false
+        }
+        
+        let testProductivityModule = Module(
+            id: "test", name: "Test", type: .productivity, level: 1,
+            quality: .normal, speedBonus: 0, productivityBonus: 0.1,
+            efficiencyBonus: 0, iconAsset: nil
+        )
+        
+        return !canUseModule(testProductivityModule, forRecipe: recipe)
+    }
+    
+    private var canPasteModule: Bool {
+        guard let copiedModule = graph.copiedModule,
+              let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
+            return false
+        }
+        return canUseModule(copiedModule, forRecipe: recipe)
+    }
+    
+    var body: some View {
+        Button(action: {
+            showModulePicker = true
+        }) {
+            Group {
+                if let module = currentModule {
+                    ModuleIcon(module: module, size: 12)
+                } else {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.gray.opacity(0.3))
+                        .overlay(
+                            Image(systemName: hasRestrictions ? "plus.circle" : "plus")
+                                .font(.system(size: 6))
+                                .foregroundStyle(hasRestrictions ? .orange : .secondary)
+                        )
+                        .frame(width: 12, height: 12)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .help(currentModule?.displayName ?? (hasRestrictions ? "This recipe has module restrictions" : "Add module"))
+        .contextMenu {
+            if let module = currentModule {
+                Button(action: {
+                    copyModule()
+                }) {
+                    Label("Copy Module", systemImage: "doc.on.doc")
+                }
+                
+                Divider()
+                
+                Button(action: {
+                    removeModule()
+                }) {
+                    Label("Remove Module", systemImage: "trash")
+                }
+            } else if graph.copiedModule != nil {
+                Button(action: {
+                    pasteModule()
+                }) {
+                    Label("Paste Module", systemImage: "doc.on.clipboard")
+                }
+                .disabled(!canPasteModule)
+            }
+            
+            // Add "Paste to All Slots" option if there's a copied module
+            if graph.copiedModule != nil {
+                Button(action: {
+                    pasteToAllSlots()
+                }) {
+                    Label("Paste to All Slots", systemImage: "doc.on.doc.fill")
+                }
+                .disabled(!canPasteModule)
+            }
+            
+            // Add "Clear All Slots" option if this slot has a module
+            if currentModule != nil {
+                Button(action: {
+                    clearAllSlots()
+                }) {
+                    Label("Clear All Slots", systemImage: "xmark.circle")
+                }
+            }
+        }
+        .sheet(isPresented: $showModulePicker) {
+            ModulePicker(node: node, slotIndex: slotIndex)
+        }
+    }
+    
+    private func copyModule() {
+        if let module = currentModule {
+            graph.copiedModule = module
+            print("Copied module: \(module.displayName)")
+        }
+    }
+    
+    private func pasteModule() {
+        guard let copiedModule = graph.copiedModule,
+              let recipe = RECIPES.first(where: { $0.id == node.recipeID }),
+              canUseModule(copiedModule, forRecipe: recipe) else {
+            return
+        }
+        
+        var updatedNode = node
+        
+        while updatedNode.modules.count <= slotIndex {
+            updatedNode.modules.append(nil)
+        }
+        
+        updatedNode.modules[slotIndex] = copiedModule
+        graph.updateNode(updatedNode)
+        print("Pasted module: \(copiedModule.displayName)")
+    }
+    
+    private func removeModule() {
+        var updatedNode = node
+        if slotIndex < updatedNode.modules.count {
+            updatedNode.modules[slotIndex] = nil
+        }
+        graph.updateNode(updatedNode)
+    }
+    
+    // NEW: Paste to all slots
+    private func pasteToAllSlots() {
+        guard let copiedModule = graph.copiedModule,
+              let recipe = RECIPES.first(where: { $0.id == node.recipeID }),
+              canUseModule(copiedModule, forRecipe: recipe),
+              let selectedTier = getSelectedMachineTier(for: node) else {
+            return
+        }
+        
+        var updatedNode = node
+        updatedNode.modules = Array(repeating: copiedModule, count: selectedTier.moduleSlots)
+        graph.updateNode(updatedNode)
+        print("Pasted \(copiedModule.displayName) to all \(selectedTier.moduleSlots) slots")
+    }
+    
+    // NEW: Clear all slots
+    private func clearAllSlots() {
+        guard let selectedTier = getSelectedMachineTier(for: node) else {
+            return
+        }
+        
+        var updatedNode = node
+        updatedNode.modules = Array(repeating: nil, count: selectedTier.moduleSlots)
+        graph.updateNode(updatedNode)
+        print("Cleared all module slots")
+    }
+}
+
 struct ModuleSlotsView: View {
     @EnvironmentObject var graph: GraphState
     var node: Node
@@ -3283,54 +3901,6 @@ struct ModuleSlotsView: View {
                     ModuleSlot(node: node, slotIndex: index)
                 }
             }
-        }
-    }
-}
-
-struct ModuleSlot: View {
-    @EnvironmentObject var graph: GraphState
-    var node: Node
-    var slotIndex: Int
-    @State private var showModulePicker = false
-    
-    private var hasRestrictions: Bool {
-        guard let recipe = RECIPES.first(where: { $0.id == node.recipeID }) else {
-            return false
-        }
-        
-        // Check if productivity modules are restricted
-        let testProductivityModule = Module(
-            id: "test", name: "Test", type: .productivity, level: 1,
-            quality: .normal, speedBonus: 0, productivityBonus: 0.1,
-            efficiencyBonus: 0, iconAsset: nil
-        )
-        
-        return !canUseModule(testProductivityModule, forRecipe: recipe)
-    }
-    
-    var body: some View {
-        Button(action: {
-            showModulePicker = true
-        }) {
-            Group {
-                if slotIndex < node.modules.count, let module = node.modules[slotIndex] {
-                    ModuleIcon(module: module, size: 12)
-                } else {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.gray.opacity(0.3))
-                        .overlay(
-                            Image(systemName: hasRestrictions ? "plus.circle" : "plus")
-                                .font(.system(size: 6))
-                                .foregroundStyle(hasRestrictions ? .orange : .secondary)
-                        )
-                        .frame(width: 12, height: 12)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .help(hasRestrictions ? "This recipe has module restrictions" : "Add module")
-        .sheet(isPresented: $showModulePicker) {
-            ModulePicker(node: node, slotIndex: slotIndex)
         }
     }
 }
@@ -3432,6 +4002,18 @@ struct ModulePicker: View {
                 Text("Choose Module")
                     .font(.headline)
                 Spacer()
+                
+                // Show if there's a copied module
+                if let copiedModule = graph.copiedModule {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.on.clipboard")
+                            .font(.caption2)
+                        Text("Copied: \(copiedModule.type.rawValue) \(copiedModule.level)")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                
                 Button("Close") {
                     dismiss()
                 }
@@ -3475,39 +4057,67 @@ struct ModulePicker: View {
                 }
             }
             
-            // Level picker
-            HStack {
-                Text("Level:")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                
-                Picker("Level", selection: $selectedLevel) {
-                    ForEach(availableLevels, id: \.self) { level in
-                        Text("\(level)").tag(level)
+            // Level buttons and Quality picker
+            HStack(spacing: 16) {
+                // Level buttons
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Level")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    HStack(spacing: 4) {
+                        ForEach(availableLevels, id: \.self) { level in
+                            Button(action: {
+                                selectedLevel = level
+                            }) {
+                                Text("\(level)")
+                                    .font(.system(.body, design: .monospaced))
+                                    .fontWeight(selectedLevel == level ? .semibold : .regular)
+                                    .frame(width: 32, height: 32)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(selectedLevel == level ?
+                                                  selectedType.color.opacity(0.3) :
+                                                  Color.gray.opacity(0.1))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(selectedLevel == level ?
+                                                   selectedType.color :
+                                                   Color.gray.opacity(0.2),
+                                                   lineWidth: selectedLevel == level ? 1.5 : 1)
+                                    )
+                                    .foregroundStyle(selectedLevel == level ?
+                                                    selectedType.color :
+                                                    .primary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
-                .pickerStyle(.menu)
-                .frame(width: 60)
                 
                 Spacer()
                 
-                Text("Quality:")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                
-                Picker("Quality", selection: $selectedQuality) {
-                    ForEach(Quality.allCases, id: \.self) { quality in
-                        HStack {
-                            Circle()
-                                .fill(quality.color)
-                                .frame(width: 8, height: 8)
-                            Text(quality.rawValue)
+                // Quality picker
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("Quality")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    Picker("Quality", selection: $selectedQuality) {
+                        ForEach(Quality.allCases, id: \.self) { quality in
+                            HStack {
+                                Circle()
+                                    .fill(quality.color)
+                                    .frame(width: 8, height: 8)
+                                Text(quality.rawValue)
+                            }
+                            .tag(quality)
                         }
-                        .tag(quality)
                     }
+                    .pickerStyle(.menu)
+                    .frame(width: 140)
                 }
-                .pickerStyle(.menu)
-                .frame(width: 120)
             }
             
             // Module preview
@@ -3527,9 +4137,30 @@ struct ModulePicker: View {
                 
                 Spacer()
                 
-                Button("Install Module") {
+                // Copy current selection button
+                Button(action: {
+                    if let module = currentModule {
+                        graph.copiedModule = module
+                    }
+                }) {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .disabled(currentModule == nil || !canInstallCurrentModule)
+                .buttonStyle(.bordered)
+                
+                Button("Install") {
                     if let module = currentModule {
                         installModule(module)
+                    }
+                }
+                .disabled(!canInstallCurrentModule)
+                .buttonStyle(.borderedProminent)
+                
+                // Install and Copy button
+                Button("Install & Copy") {
+                    if let module = currentModule {
+                        installModule(module)
+                        graph.copiedModule = module
                     }
                 }
                 .disabled(!canInstallCurrentModule)
@@ -3537,7 +4168,7 @@ struct ModulePicker: View {
             }
         }
         .padding()
-        .frame(width: 400, height: 380) // Slightly taller to accommodate warning
+        .frame(width: 500, height: 420) // Slightly wider for new buttons
         .onAppear {
             // Load current module if exists
             if slotIndex < node.modules.count, let currentMod = node.modules[slotIndex] {

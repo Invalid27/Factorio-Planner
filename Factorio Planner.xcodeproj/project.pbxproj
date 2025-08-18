@@ -6,10 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		65E62EEA2E5299F0003C6DE9 /* FactorioPlannerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E62EE92E5299F0003C6DE9 /* FactorioPlannerApp.swift */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXContainerItemProxy section */
 		65CB441D2E4D44DF001233B7 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -31,13 +27,17 @@
 		65CB440E2E4D44DE001233B7 /* Factorio Planner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Factorio Planner.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		65CB441C2E4D44DF001233B7 /* Factorio PlannerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Factorio PlannerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		65CB44262E4D44DF001233B7 /* Factorio PlannerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Factorio PlannerUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		65E62EE92E5299F0003C6DE9 /* FactorioPlannerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FactorioPlannerApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		65E62E712E526B83003C6DE9 /* Exceptions for "Backups" folder in "Factorio Planner" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"17-FactorioPlannerApp.swift - Module Button Added",
+				"18-FactorioPlannerApp 2.swift - Migrating to NSView",
+				"19-FactorioPlannerApp.swift.ModulesPerformance",
+				"FactorioPlannerApp.swift.Icon Quality Dots",
+				"FactorioPlannerApp.swift.Progress with Quality Stuff",
 				"MySwiftFile.?????",
 				MySwiftFile.bak,
 				"MySwiftFile.bak-2",
@@ -66,6 +66,11 @@
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			buildPhase = 65CB440A2E4D44DE001233B7 /* Sources */;
 			membershipExceptions = (
+				"17-FactorioPlannerApp.swift - Module Button Added",
+				"18-FactorioPlannerApp 2.swift - Migrating to NSView",
+				"19-FactorioPlannerApp.swift.ModulesPerformance",
+				"FactorioPlannerApp.swift.Icon Quality Dots",
+				"FactorioPlannerApp.swift.Progress with Quality Stuff",
 				"MySwiftFile.?????",
 				MySwiftFile.bak,
 				"MySwiftFile.bak-2",
@@ -148,7 +153,6 @@
 				65CB441F2E4D44DF001233B7 /* Factorio PlannerTests */,
 				65CB44292E4D44DF001233B7 /* Factorio PlannerUITests */,
 				65CB440F2E4D44DE001233B7 /* Products */,
-				65E62EE92E5299F0003C6DE9 /* FactorioPlannerApp.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -308,7 +312,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				65E62EEA2E5299F0003C6DE9 /* FactorioPlannerApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
